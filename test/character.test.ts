@@ -85,8 +85,21 @@ test('ponytail settles under gravity: hangs down and comes to rest', () => {
   const motion = Math.max(...hair.points.map((p, i) => dist(p, before[i])));
   assert.ok(motion < 1e-3, `still moving ${motion.toFixed(5)} m per frame`);
   const tip = hair.points.at(-1)!;
-  assert.ok(tip.y < socket.y - 0.2, 'the tip hangs below the socket');
-  assert.ok(tip.z > socket.z, 'and sits behind her head (rest shape)');
+  const length = hair.cfg.segments * hair.cfg.segmentLength;
+  assert.ok(tip.y < socket.y - length * 0.9, `hangs straight down (${(socket.y - tip.y).toFixed(2)} of ${length.toFixed(2)} m)`);
+  assert.ok(Math.hypot(tip.x - socket.x, tip.z - socket.z) < 0.1, 'not held out at an angle');
+});
+
+test('ponytail drapes down the back of her head from a high tie', () => {
+  const hair = new Ponytail();
+  const head = { center: v(0, 1.62, 0), radius: 0.125 };
+  const socket = v(0, 1.72, 0.08); // high on the back of the head
+  hair.reset(socket, HEAD);
+  for (let i = 0; i < 60 * 4; i++) hair.update(1 / 60, socket, HEAD, [head]);
+  for (const p of hair.points.slice(1)) assert.ok(dist(p, head.center) >= head.radius - 0.01, 'stays outside the head');
+  const tip = hair.points.at(-1)!;
+  assert.ok(tip.z > head.center.z + 0.08, 'falls behind the head');
+  assert.ok(tip.y < head.center.y - 0.25, 'and on down her back');
 });
 
 test('ponytail never stretches past its segment lengths, even when shaken and dashed', () => {

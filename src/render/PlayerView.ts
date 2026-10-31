@@ -55,9 +55,9 @@ export class PlayerView {
     socket: { x: 0, y: 0, z: 0 },
     frame: { right: { x: 1, y: 0, z: 0 }, up: { x: 0, y: 1, z: 0 }, back: { x: 0, y: 0, z: 1 } } as HeadFrame,
     colliders: [
-      { center: { x: 0, y: 0, z: 0 }, radius: 0.115 },
-      { center: { x: 0, y: 0, z: 0 }, radius: 0.06 },
-      { center: { x: 0, y: 0, z: 0 }, radius: 0.15 },
+      { center: { x: 0, y: 0, z: 0 }, radius: 0.13 }, // head, with its hair volume
+      { center: { x: 0, y: 0, z: 0 }, radius: 0.055 },
+      { center: { x: 0, y: 0, z: 0 }, radius: 0.145 },
     ] as Sphere[],
   };
 
@@ -107,7 +107,7 @@ export class PlayerView {
     copy(frame.up, s.v.set(0, 1, 0).applyQuaternion(s.q));
     copy(frame.back, s.v.set(0, 0, 1).applyQuaternion(s.q));
     copy(s.socket, head.localToWorld(s.v.set(...PONYTAIL_SOCKET)));
-    copy(s.colliders[0].center, head.localToWorld(s.v.set(0, 0.11, 0)));
+    copy(s.colliders[0].center, head.localToWorld(s.v.set(0, 0.11, 0.012)));
     copy(s.colliders[1].center, bones.neck.localToWorld(s.v.set(0, 0.04, 0)));
     copy(s.colliders[2].center, bones.chest.localToWorld(s.v.set(0, 0.12, 0.05)));
     this.ponytail.update(dt, s.socket, frame, s.colliders);

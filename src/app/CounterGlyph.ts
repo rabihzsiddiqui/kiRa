@@ -35,7 +35,7 @@ export class CounterGlyph {
     this.el.hidden = !open;
     if (!open) return;
 
-    const key = this.devices.active === 'gamepad' ? this.devices.gamepad.labels.attack : 'j';
+    const key = this.devices.active === 'gamepad' ? this.devices.gamepad.labels.attack : this.devices.active === 'touch' ? 'atk' : 'j';
     const label = state === PlayerStateId.PerfectDodge ? 'phantom dash' : 'overpower';
     if (this.key.textContent !== key) this.key.textContent = key;
     if (this.label.textContent !== label) this.label.textContent = label;

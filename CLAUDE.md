@@ -35,6 +35,7 @@ src/render      three.js: scene, CharacterFigure + PlayerView, dummy view, Three
 src/audio       SoundFx: procedural Web Audio, an FxSink like ThreeFx
 src/app         browser composition root: main.ts (loop), Game.ts (sim step), arena, devices (keyboard, gamepad, rumble), overlay, gallery.ts
 test/           scenario tests driven by frame-by-frame input, motor tests, import boundary check
+public/         PWA: manifest, icons, service worker (production builds only)
 ```
 
 ## Hard rules

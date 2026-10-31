@@ -22,16 +22,21 @@ export interface HeadFrame {
 export interface PonytailConfig {
   segments: number;
   segmentLength: number;
-  /** Fraction of velocity kept per substep. */
+  /**
+   * Fraction of each point's velocity RELATIVE TO THE TIE kept per substep. Damps the
+   * swing and wobble without making the hair lag behind when she simply moves.
+   */
   damping: number;
   gravity: number;
   iterations: number;
   substep: number;
-  /** Max bend between one segment and the next, degrees. */
+  /** Max bend between one segment and the next, degrees. A braid is fairly stiff. */
   coneDeg: number;
-  /** 0..1 pull toward the rest shape per iteration. Weak, so it still swings. */
+  /** How far the first segment may swing from restDir at the tie, degrees. Wide: it hangs. */
+  rootConeDeg: number;
+  /** 0..1 pull toward the rest shape per iteration. 0 = gravity alone shapes it. */
   restPull: number;
-  /** Rest direction of the hair in head space (right, up, back). */
+  /** Direction the hair leaves the tie, in head space (right, up, back). Only limits the first segment. */
   restDir: Vec3;
   /** Root may move this far per substep; beyond that the whole chain is carried along. */
   maxRootStep: number;
@@ -42,18 +47,24 @@ export interface PonytailConfig {
   airDrag: number;
 }
 
+/**
+ * A heavy braid from a high tie: it hangs straight down under gravity and drapes over the
+ * back of her head (the head collider does that), swings when she moves, and settles
+ * quickly instead of wobbling.
+ */
 export const DEFAULT_PONYTAIL: PonytailConfig = {
-  segments: 7,
-  segmentLength: 0.065,
-  damping: 0.985,
+  segments: 9,
+  segmentLength: 0.058,
+  damping: 0.965,
   gravity: 9.8,
   iterations: 4,
   substep: 1 / 120,
-  coneDeg: 35,
-  restPull: 0.04,
-  restDir: { x: 0, y: -0.75, z: 0.66 }, // down and back
+  coneDeg: 28,
+  rootConeDeg: 75,
+  restPull: 0,
+  restDir: { x: 0, y: -0.6, z: 0.8 }, // leaves the tie down and back
   maxRootStep: 0.08,
-  airDrag: 4,
+  airDrag: 1.2,
 };
 
 export class Ponytail {
@@ -157,26 +168,31 @@ export class Ponytail {
         prev[i] = add(prev[i], carry);
       }
     }
+    const tieV = sub(socket, x[0]); // how far the tie moved this substep
     x[0] = { ...socket };
     prev[0] = { ...socket };
 
-    // 2. Verlet integrate: keep momentum (damped, plus air drag), add gravity.
-    const keep = cfg.damping * Math.max(0, 1 - cfg.airDrag * dt);
+    // 2. Verlet integrate. Swinging relative to the tie is damped hard (a heavy braid
+    //    settles, it doesn't wobble); air drag is light, so running only trails it back.
+    const drag = Math.max(0, 1 - cfg.airDrag * dt);
     for (let i = 1; i < x.length; i++) {
-      const v = scale(sub(x[i], prev[i]), keep);
+      const raw = sub(x[i], prev[i]);
+      const v = scale(add(tieV, scale(sub(raw, tieV), cfg.damping)), drag);
       prev[i] = x[i];
       x[i] = add(add(x[i], v), { x: 0, y: -cfg.gravity * dt * dt, z: 0 });
     }
 
     // 3. Constraints. Follow-the-leader keeps every segment exactly its length.
+    const before = x.map((p) => ({ ...p }));
     const rest = toWorld(norm(cfg.restDir), head);
     const cosCone = Math.cos((cfg.coneDeg * Math.PI) / 180);
+    const cosRoot = Math.cos((cfg.rootConeDeg * Math.PI) / 180);
     for (let it = 0; it < cfg.iterations; it++) {
       let parentDir = rest;
       for (let i = 1; i < x.length; i++) {
         let d = norm(sub(x[i], x[i - 1]), parentDir);
-        d = coneLimit(d, parentDir, cosCone);
-        d = norm(add(scale(d, 1 - cfg.restPull), scale(rest, cfg.restPull)), d);
+        d = coneLimit(d, parentDir, i === 1 ? cosRoot : cosCone);
+        if (cfg.restPull > 0) d = norm(add(scale(d, 1 - cfg.restPull), scale(rest, cfg.restPull)), d);
         let p = add(x[i - 1], scale(d, cfg.segmentLength));
         for (const s of colliders) p = pushOut(p, s);
         // Re-length after the push so a collision can never stretch the chain.
@@ -185,8 +201,19 @@ export class Ponytail {
         parentDir = d;
       }
     }
+
+    // 4. Follow-the-leader on its own pumps energy into the end of the chain (the tip
+    //    whips instead of settling). Dynamic FTL (Mueller et al. 2012): each point gives
+    //    back most of the correction its child just received, as velocity.
+    for (let i = 1; i < x.length - 1; i++) {
+      const childFix = sub(x[i + 1], before[i + 1]);
+      prev[i] = add(prev[i], scale(childFix, FTL_DAMPING));
+    }
   }
 }
+
+/** Share of the child's correction fed back as velocity (the paper suggests about 0.9). */
+const FTL_DAMPING = 0.9;
 
 // --------------------------------------------------------------- vector math
 

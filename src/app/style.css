@@ -361,3 +361,166 @@ body {
     transform: translate(-50%, 0);
   }
 }
+
+/* ------------------------------------------------------------- touch controls */
+
+/* Phones: no page scrolling, zooming or pull-to-refresh fighting the controls. */
+html,
+body {
+  overscroll-behavior: none;
+}
+
+.touch {
+  position: fixed;
+  inset: 0;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Floating joystick: appears where the left thumb lands. */
+.touch-stick {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.touch-stick::before {
+  content: '';
+  position: absolute;
+  width: 112px;
+  height: 112px;
+  transform: translate(-50%, -50%);
+  border-radius: 9999px;
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
+.touch-stick-knob {
+  position: absolute;
+  width: 52px;
+  height: 52px;
+  border-radius: 9999px;
+  background: rgb(99 102 241 / 0.85);
+  box-shadow: 0 0 24px rgb(99 102 241 / 0.35);
+}
+
+.touch-buttons {
+  position: fixed;
+  right: calc(24px + env(safe-area-inset-right));
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: repeat(3, 64px);
+  grid-template-rows: repeat(3, 64px);
+  gap: 8px;
+}
+
+.touch-btn {
+  display: grid;
+  place-items: center;
+  border-radius: 9999px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  touch-action: none;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition:
+    transform 120ms ease-out,
+    background-color 120ms ease-out;
+}
+
+/* Attack: the big indigo one under the thumb's resting spot. */
+.touch-btn-attack {
+  grid-column: 2 / 4;
+  grid-row: 2 / 4;
+  background: rgb(79 70 229 / 0.85); /* indigo-600 */
+  border-color: rgb(129 140 248 / 0.5);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.touch-btn-evade {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+.touch-btn-block {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.touch-btn-target {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.touch-btn-down {
+  transform: scale(0.94);
+  background: rgb(63 63 70 / 0.8);
+}
+
+.touch-btn-attack.touch-btn-down {
+  background: rgb(99 102 241 / 0.95);
+}
+
+.touch-btn-on {
+  border-color: rgb(34 211 238 / 0.7);
+  color: var(--cyan);
+  box-shadow: 0 0 18px rgb(34 211 238 / 0.25);
+}
+
+.touch-pills {
+  position: fixed;
+  top: calc(16px + env(safe-area-inset-top));
+  right: calc(16px + env(safe-area-inset-right));
+  display: flex;
+  gap: 8px;
+}
+
+.touch-pill {
+  padding: 6px 12px;
+  border-radius: 9999px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  touch-action: none;
+}
+
+/* Landscape only: ask to turn the phone in portrait. */
+.rotate-hint {
+  display: none;
+}
+
+@media (pointer: coarse) and (orientation: portrait) {
+  .rotate-hint {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: grid;
+    place-items: center;
+    margin: 0;
+    padding: 32px;
+    background: var(--bg);
+    color: var(--text-2);
+    font-size: 16px;
+    text-align: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .touch-btn {
+    transition: none;
+  }
+}

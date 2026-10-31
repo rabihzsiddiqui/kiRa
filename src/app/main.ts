@@ -44,6 +44,9 @@ async function boot(): Promise<void> {
   const cameraView = new CameraView(window.innerWidth / window.innerHeight, rig.cfg.fov);
 
   const arena = new ArenaView(canvas, ARENA);
+  // Phones: render at most 1.5x density. Fill rate is the bottleneck there, and the
+  // post-processing stack runs at full resolution.
+  if (devices.touch) arena.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   const playerView = new PlayerView(game.animator);
   const dummyView = new DummyView(ARENA.dummy.position, ARENA.dummy.radius, ARENA.dummy.height);
   const hitboxes = new HitboxDebugView();
@@ -68,6 +71,11 @@ async function boot(): Promise<void> {
     slowmo: game.feel.slowmo,
     infinitePerfect: game.player.infinitePerfectWindows,
   }));
+  // Phones: the hud would cover most of the screen; it is one tap away on the hud pill.
+  if (devices.touch) {
+    overlay.toggle();
+    devices.touch.setLockQuery(() => game.targeting.isLocked);
+  }
   if (import.meta.env.DEV) {
     window.__kira = game;
     window.__kiraFx = fx;
@@ -122,6 +130,16 @@ async function boot(): Promise<void> {
     else if (d === 'infinitePerfect') debug.toggleInfinitePerfect();
     else if (d === 'overlay') overlay.toggle();
   };
+  if (devices.touch) {
+    devices.touch.onDebug = (d) => {
+      if (d === 'hud') overlay.toggle();
+      else if (d === 'ai') {
+        debug.toggleAI();
+        toast(game.dummyAI.enabled ? 'dummy ai on' : 'dummy ai off');
+      } else if (d === 'pause') debug.togglePause();
+      else if (d === 'fullscreen') toggleFullscreen();
+    };
+  }
   devices.gamepad.onConnection = ({ connected, family }) =>
     toast(connected ? `controller connected${family === 'generic' ? '' : `: ${family}`}` : 'controller disconnected');
 
@@ -208,6 +226,19 @@ async function boot(): Promise<void> {
   requestAnimationFrame(frame);
 }
 
+function toggleFullscreen(): void {
+  if (document.fullscreenElement) void document.exitFullscreen();
+  else void document.documentElement.requestFullscreen().catch(() => toast('full screen is not available here'));
+}
+
+/** Production builds work offline once loaded (see public/sw.js). Dev builds skip it. */
+function registerServiceWorker(): void {
+  if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err: unknown) => console.warn('service worker not registered', err));
+  });
+}
+
 /** Short message at the top of the screen, gone after a moment. */
 function toast(message: string): void {
   let el = document.querySelector<HTMLElement>('.toast');
@@ -222,6 +253,7 @@ function toast(message: string): void {
   el.dataset.timer = String(window.setTimeout(() => el.classList.remove('toast-visible'), 2200));
 }
 
+registerServiceWorker();
 boot().catch((err: unknown) => {
   console.error(err);
   const box = document.createElement('pre');

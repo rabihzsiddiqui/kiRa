@@ -25,6 +25,22 @@ const padToggles = (l: PadLabels): ToggleKeys => ({
   infinitePerfect: l.rightClick,
 });
 
+// Phones only get the gameplay buttons and a few pills; the deeper switches are keyboard only.
+const TOUCH_TOGGLES: ToggleKeys = { hitAreas: 'keys only', slowmo: 'keys only', infinitePerfect: 'keys only' };
+
+const TOUCH_CONTROLS: ReadonlyArray<[string, string]> = [
+  ['move', 'left thumb'],
+  ['look', 'drag on the right'],
+  ['attack', 'atk'],
+  ['evade', 'evade'],
+  ['block', 'block, hold'],
+  ['target', 'lock, tap'],
+  ['jump atk', 'evade while locked on'],
+  ['dummy ai', 'ai pill'],
+  ['pause sim', 'pause pill'],
+  ['hud', 'hud pill'],
+];
+
 const KEYBOARD_CONTROLS: ReadonlyArray<[string, string]> = [
   ['move', 'wasd'],
   ['look', 'mouse'],
@@ -179,7 +195,7 @@ export class DebugOverlay {
   update(fps: number): void {
     const onPad = this.devices.active === 'gamepad';
     // The mouse hint only matters on keyboard and mouse.
-    this.hint.hidden = onPad || this.devices.keyboard.pointerLocked;
+    this.hint.hidden = this.devices.active !== 'keyboard' || this.devices.keyboard.pointerLocked;
     if (this.live.hidden) return;
     this.renderControls();
     const g = this.game;
@@ -202,7 +218,9 @@ export class DebugOverlay {
     const pad = this.devices.gamepad;
     const device = onPad
       ? `${pad.family === 'generic' ? 'gamepad' : pad.family}`
-      : `keyboard${this.devices.keyboard.pointerLocked ? ', mouse captured' : ''}${pad.name ? ', pad idle' : ''}`;
+      : this.devices.active === 'touch'
+        ? 'touch'
+        : `keyboard${this.devices.keyboard.pointerLocked ? ', mouse captured' : ''}${pad.name ? ', pad idle' : ''}`;
     this.set('device', `${device}, ${fps.toFixed(0)} fps`);
 
     this.renderBuffer();
@@ -261,14 +279,14 @@ export class DebugOverlay {
 
   /** Rebuilt only when the active device (or pad family) changes. */
   private renderControls(): void {
-    const onPad = this.devices.active === 'gamepad';
-    const key = onPad ? `pad:${this.devices.gamepad.family}` : 'keyboard';
+    const kind = this.devices.active;
+    const key = kind === 'gamepad' ? `pad:${this.devices.gamepad.family}` : kind;
     if (key === this.controlsFor) return;
     this.controlsFor = key;
     const labels = this.devices.gamepad.labels;
-    const rows = onPad ? padControls(labels) : KEYBOARD_CONTROLS;
+    const rows = kind === 'gamepad' ? padControls(labels) : kind === 'touch' ? TOUCH_CONTROLS : KEYBOARD_CONTROLS;
     this.controls.replaceChildren(...rows.flatMap(([k, v]) => [text('dt', 'hud-key', k), text('dd', 'hud-value', v)]));
-    const keys = onPad ? padToggles(labels) : KEYBOARD_TOGGLES;
+    const keys = kind === 'gamepad' ? padToggles(labels) : kind === 'touch' ? TOUCH_TOGGLES : KEYBOARD_TOGGLES;
     for (const [flag, t] of this.toggles) setText(t.key, keys[flag]);
   }
 
