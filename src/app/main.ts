@@ -9,6 +9,8 @@ import { planarFrom3 } from '../physics/space';
 import { AttackId } from '../combat/moves';
 import { ArenaView } from '../render/ArenaView';
 import { BladeCharge } from '../render/BladeCharge';
+import { SwordTrail } from '../render/SwordTrail';
+import { trailEmitting } from '../feel/swingTrail';
 import { CameraView } from '../render/CameraView';
 import { DummyView } from '../render/DummyView';
 import { HitboxDebugView } from '../render/HitboxDebugView';
@@ -51,7 +53,7 @@ async function boot(): Promise<void> {
   const dummyView = new DummyView(ARENA.dummy.position, ARENA.dummy.radius, ARENA.dummy.height);
   const hitboxes = new HitboxDebugView();
   hitboxes.visible = false; // V shows hit areas and hurtboxes
-  arena.scene.add(playerView.root, playerView.hair, dummyView.root, hitboxes.root);
+  arena.scene.add(playerView.root, dummyView.root, hitboxes.root);
 
   // Presentation. Each one is an FxSink fed by CombatFeel's cues; none of them touch gameplay.
   const grade = new PostGrade({}, reducedMotion);
@@ -61,6 +63,8 @@ async function boot(): Promise<void> {
   game.events.on('attackStarted', () => sound.swing());
   game.dummyAI.events.on('telegraph', ({ step }) => sound.telegraph(!!step.attack.unblockable));
   const bladeCharge = new BladeCharge(playerView.sword, reducedMotion);
+  const swordTrail = new SwordTrail(playerView.sword);
+  arena.scene.add(swordTrail.mesh);
   const post = new PostFx(arena.renderer, arena.scene, cameraView.camera, reducedMotion);
   const glyph = new CounterGlyph(document.body, game, devices);
   const chest = new THREE.Vector3();
@@ -204,12 +208,13 @@ async function boot(): Promise<void> {
 
     // Paused: effects freeze too (a true freeze frame), the camera still orbits.
     const fxDt = paused ? 0 : realDt;
-    playerView.updateHair(fxDt * game.time.playerScale); // her hair slows with her
     const swing = game.player.attack?.attack;
     bladeCharge.update(fxDt, {
       charge: game.player.spinCharge,
       spinning: swing === AttackId.Spin || swing === AttackId.SpinClockwise,
     });
+    // On her clock, so trails linger with her in slow-mo.
+    swordTrail.update(fxDt * game.time.playerScale, { attack: swing ?? null, emitting: trailEmitting(game.player.attack) });
     fx.update(fxDt, worldDt);
     const g = grade.update(fxDt, game.time.worldScale, game.targeting.isLocked);
     sound.setWorldLowpass(g.lowpassHz);

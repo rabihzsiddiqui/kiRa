@@ -1,6 +1,6 @@
 /**
  * Tiny typed pub/sub. Modules talk through events instead of holding references
- * to each other (audio, VFX, ponytail, UI all listen; none of them are known to the FSM).
+ * to each other (audio, VFX, camera, UI all listen; none of them are known to the FSM).
  */
 export class EventBus<E extends Record<string, unknown>> {
   private handlers = new Map<keyof E, Set<(payload: never) => void>>();

@@ -28,7 +28,7 @@ src/player      PlayerController, contracts (all interfaces + tuning), states/
 src/physics     CharacterMotor implementations (SimpleMotor, RapierMotor), RapierCameraProbe, planar <-> 3D mapping (space.ts)
 src/feel        CombatFeel: events -> slow-mo, hit stop, FX cues. PostGrade: cues + world clock -> screen/audio grade
 src/enemies     enemy attack strings (data) and TrainingDummyAI. Engine-free, world clock
-src/character   rig (bones, Mixamo names), clips (every animation as data), Ponytail (verlet). Engine-free
+src/character   rig (bones, Mixamo names), clips (every animation as data), fk (puts poses on the floor). Engine-free
 src/camera      CameraRig: orbit, lock-on framing, spring arm, cue reactions. Engine-free, outputs a CameraPose
 src/sandbox     HeadlessSandbox (used by tests, shows the frame order)
 src/render      three.js: scene, CharacterFigure + PlayerView, dummy view, ThreeAnimator (mixer), CameraView, PostFx, ThreeFx

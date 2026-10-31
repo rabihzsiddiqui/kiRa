@@ -1,4 +1,4 @@
-import { length, normalize, scale, type Vec2 } from '../../core/math';
+import { length, normalize, rotateToward, scale, type Vec2 } from '../../core/math';
 import { EVADES, EvadeId, type EvadeDef } from '../../combat/moves';
 import { PlayerStateId, type Defense, type PlayerContext, type PlayerState } from '../contracts';
 import { commitIntent, freeRunSpeed, moveVector, readIntent, type EvadeParams } from './shared';
@@ -47,6 +47,16 @@ export class EvadeState implements PlayerState {
     if (!def.faceTravel && ctx.targeting.isLocked) {
       const toTarget = ctx.targeting.directionToTarget();
       if (toTarget) ctx.motor.turnToward(toTarget, ctx.tuning.lockTurnRate, dt);
+    }
+
+    // The roll bends toward the stick at a limited rate, so it can curve around things
+    // without turning into a free run. She turns with it.
+    if (def.steerRate > 0) {
+      const move = moveVector(ctx);
+      if (length(move) >= ctx.tuning.dirDeadzone) {
+        this.dir = rotateToward(this.dir, normalize(move), def.steerRate * dt);
+        ctx.motor.turnToward(this.dir, Infinity, 0);
+      }
     }
 
     // Full speed, then ease out over the last quarter. Combat evades ease to a stop so

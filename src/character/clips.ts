@@ -699,19 +699,44 @@ function flipClip(name: string, duration: number, rot: Euler, shape: Pose, t0: n
 /** Sword hand for the roll: blade turned out to her right, along the roll's axis, so it never digs in. */
 const ROLL_SWORD = { upperArmR: [50, 0, 0] as Euler, forearmR: [70, 0, 0] as Euler, handR: [0, -90, 0] as Euler };
 
-/** Dropping into the roll: deep crouch, chest over the knees, left hand reaching for the floor. */
-const ROLL_DIVE: Pose = {
+/** Loading the dive: a quick deep crouch, chest out over the lead knee, eyes still ahead. */
+const ROLL_LOAD: Pose = {
   bones: {
-    spine: [-45, 0, 0],
+    spine: [-35, 0, 0],
     chest: [-10, 0, 0],
-    neck: [-20, 0, 0],
-    ...ROLL_SWORD,
-    upperArmL: [70, 0, -10],
-    forearmL: [20, 0, 0],
-    thighL: [75, 0, 0],
-    shinL: [-95, 0, 0],
-    thighR: [60, 0, 0],
-    shinR: [-100, 0, 0],
+    neck: [12, 0, 0],
+    head: [8, 0, 0],
+    upperArmR: [40, 0, 10],
+    forearmR: [60, 0, 0],
+    handR: [0, -90, 0],
+    upperArmL: [55, 0, -10],
+    forearmL: [25, 0, 0],
+    thighL: [70, 0, 0],
+    shinL: [-100, 0, 0],
+    thighR: [40, 0, 0],
+    shinR: [-95, 0, 0],
+  },
+};
+
+/**
+ * The dive: legs pushing off long behind her, the free hand reaching for the floor,
+ * chin starting to tuck. With the body tipped forward this puts the hand down first.
+ */
+const ROLL_REACH: Pose = {
+  bones: {
+    spine: [-15, 0, 0],
+    chest: [-15, 0, 0],
+    neck: [-30, 0, 0],
+    head: [-25, 0, 0],
+    upperArmR: [95, 0, 20],
+    forearmR: [40, 0, 0],
+    handR: [0, -90, 0],
+    upperArmL: [125, 0, -8],
+    forearmL: [15, 0, 0],
+    thighL: [30, 0, 0],
+    shinL: [-35, 0, 0],
+    thighR: [-8, 0, 0],
+    shinR: [-15, 0, 0],
   },
 };
 
@@ -759,39 +784,102 @@ const ROLL_EXIT: Pose = {
   },
 };
 
+/** Weighted sum of poses (weights add up to 1). */
+function blendPoses(poses: readonly Pose[], w: readonly number[]): Pose {
+  const bones: Partial<Record<BoneId, Euler>> = {};
+  const ids = new Set(poses.flatMap((p) => Object.keys(p.bones))) as Set<BoneId>;
+  for (const id of ids) {
+    const e: Euler = [0, 0, 0];
+    poses.forEach((p, i) => {
+      const b = p.bones[id] ?? [0, 0, 0];
+      for (let a = 0; a < 3; a++) e[a] += b[a] * w[i];
+    });
+    bones[id] = e;
+  }
+  const sum = (f: (p: Pose) => number) => poses.reduce((acc, p, i) => acc + f(p) * w[i], 0);
+  return { bones, hipsY: sum((p) => p.hipsY ?? 0), hipsZ: sum((p) => p.hipsZ ?? 0) };
+}
+
+/**
+ * Smooth curve through [time, pose] keys (Catmull-Rom). Unlike keyed(), it doesn't stop
+ * at every key, so a move made of several poses flows from one into the next.
+ */
+function splined(keys: Array<[number, Pose]>): (t: number) => Pose {
+  const n = keys.length;
+  return (t) => {
+    if (t <= keys[0][0]) return keys[0][1];
+    if (t >= keys[n - 1][0]) return keys[n - 1][1];
+    let i = 1;
+    while (keys[i][0] < t) i++;
+    const [t0, p1] = keys[i - 1];
+    const [t1, p2] = keys[i];
+    const p0 = keys[Math.max(0, i - 2)][1];
+    const p3 = keys[Math.min(n - 1, i + 1)][1];
+    const u = (t - t0) / (t1 - t0);
+    const u2 = u * u;
+    const u3 = u2 * u;
+    return blendPoses([p0, p1, p2, p3], [
+      (-u3 + 2 * u2 - u) / 2,
+      (3 * u3 - 5 * u2 + 2) / 2,
+      (-3 * u3 + 4 * u2 + u) / 2,
+      (u3 - u2) / 2,
+    ]);
+  };
+}
+
 /** Center of the tuck in hips space (meters up, forward). The roll turns about this point. */
 const ROLL_CENTER = { up: 0.27, forward: 0 };
 
+/** Roll timing (seconds): start tipping, hand on the floor, back on the feet. */
+const ROLL_TIP = 0.05;
+const ROLL_HANDS = 0.15;
+const ROLL_UP = 0.36;
+/** How far she has tipped over when the hand meets the floor (degrees). */
+const ROLL_DIVE_ANGLE = 85;
+
 /**
- * Forward roll along the ground: dive, one full turn balled up, then up onto the feet.
- * Two things make it a roll and not a flip in the air: it turns about the middle of the
- * tucked body (hipsZ shifts the hips around that point), and every frame is placed so
- * the lowest part of the body touches the floor. The motor supplies the travel; at roll
- * speed, one turn covers about the tuck's circumference, so she doesn't skid.
+ * Total forward turn at time t. Speeds up through the dive (she tips over her hand), then
+ * rolls on at the same rate and eases out as she comes up. The two pieces are matched so
+ * the spin never jerks where they meet.
+ */
+function rollTurn(t: number): number {
+  const A = ROLL_DIVE_ANGLE;
+  if (t <= ROLL_TIP) return 0;
+  if (t <= ROLL_HANDS) return A * ((t - ROLL_TIP) / (ROLL_HANDS - ROLL_TIP)) ** 2;
+  const u = clamp01((t - ROLL_HANDS) / (ROLL_UP - ROLL_HANDS));
+  return A + (360 - A) * (0.7 * u + 0.3 * (1 - (1 - u) ** 2));
+}
+
+/**
+ * Dive roll along the ground: a quick crouch, a dive forward onto the free hand, one turn
+ * balled up, then up onto the feet. Two things make it a roll and not a flip in the air:
+ * it turns about the middle of the tucked body (hipsZ shifts the hips around that point),
+ * and every frame is placed so the lowest part of the body touches the floor. The motor
+ * supplies the travel; at roll speed the turn roughly matches the ground covered, so she
+ * doesn't skid.
  */
 function rollClip(): ClipDef {
   const d = E[EvadeId.Roll];
-  const t0 = 0.06; // start turning
-  const t1 = 0.38; // back on the feet
-  const ease = 0.07; // blend between the shapes at each end of the turn
+  const shape = splined([
+    [0, ROLL_EXIT],
+    [0.07, ROLL_LOAD],
+    [ROLL_HANDS, ROLL_REACH],
+    [0.21, ROLL_TUCK],
+    [0.29, ROLL_TUCK],
+    [ROLL_UP, ROLL_RISE],
+    [d.duration, ROLL_EXIT],
+  ]);
   return {
     name: d.anim,
     duration: d.duration,
     loop: false,
     sample: (t) => {
-      let shape: Pose;
-      if (t < t0) shape = lerpPose(ROLL_EXIT, ROLL_DIVE, smooth(t / t0));
-      else if (t < t1) shape = lerpPose(lerpPose(ROLL_DIVE, ROLL_TUCK, span(t, t0, t0 + ease)), ROLL_RISE, span(t, t1 - ease, t1));
-      else shape = lerpPose(ROLL_RISE, ROLL_EXIT, span(t, t1, d.duration));
-
-      // Mostly steady spin, softened at both ends.
-      const k = clamp01((t - t0) / (t1 - t0));
-      const turn = 360 * (0.6 * k + 0.4 * smooth(k));
+      const turn = rollTurn(t);
       const a = turn * (Math.PI / 180);
       const c = ROLL_CENTER;
       // Where the center would go if the body turned about the hips, undone by moving the hips.
       const hipsZ = c.forward - (c.up * Math.sin(a) + c.forward * Math.cos(a));
-      return onGround({ ...withHips(shape, [-turn, 0, 0]), hipsZ }, 0.04);
+      return onGround({ ...withHips(shape(t), [-turn, 0, 0]), hipsZ }, 0.04);
     },
   };
 }

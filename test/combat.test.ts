@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { HeadlessSandbox, type FrameInput } from '../src/sandbox/HeadlessSandbox';
-import { AttackId, EvadeId } from '../src/combat/moves';
+import { AttackId, EVADES, EvadeId } from '../src/combat/moves';
 import { DEFAULT_TUNING, PlayerStateId } from '../src/player/contracts';
 import type { EvadeState } from '../src/player/states/EvadeState';
 import type { PerfectBlockState } from '../src/player/states/PerfectStates';
@@ -191,6 +191,31 @@ test('traversal roll with the stick released still eases to a stop', () => {
   }
   assert.equal(sb.player.state, PlayerStateId.Grounded);
   assert.ok(endSpeed < 0.5, `slowed to a stop (${endSpeed.toFixed(2)} m/s)`);
+});
+
+test('the roll steers: holding the stick to one side bends it that way, at a limited rate', () => {
+  const sb = new HeadlessSandbox();
+  sb.step({ stick: FWD, evade: true });
+  sb.run(6, { stick: FWD }); // ~0.1 s straight
+  assert.equal(sb.player.state, PlayerStateId.Evade);
+  const before = { ...sb.motor.position };
+  sb.run(12, { stick: RIGHT }); // ~0.2 s steering right
+  assert.equal(sb.player.state, PlayerStateId.Evade, 'still rolling');
+  const v = sb.motor.planarVelocity;
+  const heading = Math.atan2(v.x, v.y); // 0 = forward, + = toward the right
+  assert.ok(sb.motor.position.x - before.x > 0.15, `drifted right (${(sb.motor.position.x - before.x).toFixed(2)} m)`);
+  assert.ok(heading > 0.4, `bent toward the stick (${heading.toFixed(2)} rad)`);
+  assert.ok(heading < 0.2 * EVADES[EvadeId.Roll].steerRate + 0.05, 'but no faster than its steer rate');
+  assert.ok(sb.motor.facing.x > 0.3, 'she turns with it');
+});
+
+test('hops and flips commit: the stick cannot bend them once started', () => {
+  const { sb, L } = lockedSandbox();
+  sb.step(L({ stick: RIGHT, evade: true }));
+  sb.run(3, L({ stick: RIGHT }));
+  sb.run(10, L({ stick: FWD }));
+  const v = sb.motor.planarVelocity;
+  assert.ok(Math.abs(v.y) < 0.05 && v.x > 0, `still hopping straight right (${v.x.toFixed(2)}, ${v.y.toFixed(2)})`);
 });
 
 test('targeted evade + left/right = side hop, + back = backflip', () => {

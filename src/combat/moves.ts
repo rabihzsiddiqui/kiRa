@@ -283,23 +283,28 @@ export interface EvadeDef {
   cancelFrom: number;
   /** Roll turns to face its travel direction; hops and flips keep facing the target. */
   faceTravel: boolean;
+  /**
+   * How fast the stick can bend the evade's path once it has started (rad/s). 0 = locked
+   * in at the start. The roll steers, hops and flips commit.
+   */
+  steerRate: number;
 }
 
 export const EVADES: Readonly<Record<EvadeId, EvadeDef>> = {
   [EvadeId.Roll]: {
     id: EvadeId.Roll, anim: 'evade_roll', duration: 0.5, speed: 7, upSpeed: 0,
-    invulnFrom: 0.04, invulnTo: 0.3, cancelFrom: 0.42, faceTravel: true,
+    invulnFrom: 0.04, invulnTo: 0.3, cancelFrom: 0.42, faceTravel: true, steerRate: 4,
   },
   [EvadeId.SideHopLeft]: {
     id: EvadeId.SideHopLeft, anim: 'evade_hop_left', duration: 0.4, speed: 6, upSpeed: 4,
-    invulnFrom: 0, invulnTo: 0.25, cancelFrom: 0.36, faceTravel: false,
+    invulnFrom: 0, invulnTo: 0.25, cancelFrom: 0.36, faceTravel: false, steerRate: 0,
   },
   [EvadeId.SideHopRight]: {
     id: EvadeId.SideHopRight, anim: 'evade_hop_right', duration: 0.4, speed: 6, upSpeed: 4,
-    invulnFrom: 0, invulnTo: 0.25, cancelFrom: 0.36, faceTravel: false,
+    invulnFrom: 0, invulnTo: 0.25, cancelFrom: 0.36, faceTravel: false, steerRate: 0,
   },
   [EvadeId.Backflip]: {
     id: EvadeId.Backflip, anim: 'evade_backflip', duration: 0.55, speed: 5.5, upSpeed: 5.5,
-    invulnFrom: 0.05, invulnTo: 0.35, cancelFrom: 0.5, faceTravel: false,
+    invulnFrom: 0.05, invulnTo: 0.35, cancelFrom: 0.5, faceTravel: false, steerRate: 0,
   },
 };

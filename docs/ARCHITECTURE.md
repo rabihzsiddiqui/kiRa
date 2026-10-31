@@ -19,7 +19,7 @@ The gameplay core is plain TypeScript with zero engine dependencies. Rendering, 
 | **Physics** | `src/physics` | `CharacterMotor` implementations (capsule, gravity) | player contracts |
 | **Feel** | `src/feel` | `CombatFeel`: events in, time effects + FX cues out | events, time |
 | **Camera** | `src/camera` | orbit + lock-on rig, spring arm, event reactions (engine-free, outputs a pose) | targeting, fx cues |
-| **Character FX** | `src/character` *(to build)* | ponytail verlet chain, sword trail | motor, events |
+| **Character** | `src/character` | rig, clips (animation as data), forward kinematics for floor contact | moves, tuning |
 | **Render adapter** | `src/render` *(to build)* | Three.js scene, animator, `FxSink` | everything above, read-only |
 
 ### Dependency rules
@@ -27,7 +27,7 @@ The gameplay core is plain TypeScript with zero engine dependencies. Rendering, 
 ```
 input ──► combat/IntentResolver ──► player FSM ──► (motor, animator, combat sink)  [interfaces]
                                          │
-                                         └──► EventBus ──► feel, camera, ponytail, audio, UI
+                                         └──► EventBus ──► feel, camera, audio, UI
 ```
 
 - The player FSM never imports a renderer, a camera or a concrete motor. It talks to `PlayerContext` interfaces.
@@ -48,7 +48,6 @@ enemies.update(realDt * time.worldScale)
 combat overlap tests -> player.receiveHit() / enemy.receiveHit()
 feel.update()
 camera.update(realDt)                       // camera stays smooth during slow-mo
-ponytail.step(realDt * time.playerScale)    // hair slows with her
 render
 ```
 
@@ -57,7 +56,7 @@ Three clocks:
 | Clock | Drives | Why |
 |---|---|---|
 | Real | input buffer, camera, UI | timing windows feel identical to the thumbs, camera stays fluid |
-| Player | player FSM, her motor, ponytail, her animations | she moves faster than the world during slow-mo |
+| Player | player FSM, her motor, her animations | she moves faster than the world during slow-mo |
 | World | enemies, projectiles, particles | the slow-mo effect |
 
 ---
@@ -220,17 +219,9 @@ The camera runs on real time, so it stays smooth while the world crawls.
 
 ---
 
-## 8. Ponytail (to build)
+## 8. Hair
 
-Verlet chain, 6 to 8 particles, rooted at a socket on the head bone.
-
-Per substep (fixed 120 Hz, player-scaled dt so it slows with her):
-1. Pin particle 0 to the socket's world position.
-2. Integrate: `x' = x + (x - xPrev) * damping + gravity * dt²`.
-3. Solve 3 to 4 iterations of: distance constraints, collision pushout against head/neck/shoulder spheres, a cone limit per segment, and a weak pull toward the rest pose in head space so it keeps its shape.
-4. Clamp how far the root may move in one step (Phantom Dash moves 9 m fast; without this the hair whips into infinity).
-
-Spins and flips need no special code: the head moves, the chain lags. Drive skinned bones from the particles, or render a tube along them.
+Her hair is a chin-length bob with no simulation: one shell around the head plus locks laid over it (`src/render/HeadSculpt.ts`, `CharacterFigure.ts`). A ponytail verlet chain (`src/character/Ponytail.ts`, 120 Hz substeps on the player clock, follow-the-leader lengths, collision spheres) lived here until the redesign; restore it from commit 224c1c5 if a longer style comes back.
 
 ---
 

@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import { CLIPS, LOCOMOTION } from '../character/clips';
+import { ATTACKS, type AttackDef } from '../combat/moves';
 import { COLORS } from '../render/ArenaView';
 import { PlayerView } from '../render/PlayerView';
+import { SwordTrail } from '../render/SwordTrail';
 import { ThreeAnimator } from '../render/ThreeAnimator';
 
 /*
  * Dev tool: every clip on its own figure, in a grid. /gallery.html in `npm run dev`.
- *   ?at=0.4   freeze every clip at 40% of its length (good for checking poses)
+ *   ?at=0.4   freeze every clip at 40% of its length (good for checking poses and trails)
  *   ?only=atk only clips whose name contains "atk"
  *   ?zoom=3   move the camera in (close-ups of the model)
  *   ?yaw=180  turn every figure, in degrees (180 = her back to the camera)
@@ -27,7 +29,16 @@ interface Entry {
   label: HTMLElement;
   /** Locomotion entries set params instead of playing a one-shot. */
   loco?: Record<string, number>;
+  /** Attack clips draw their sword trail during the live part of the swing. */
+  attack?: AttackDef;
+  trail: SwordTrail;
 }
+
+/** Trail input for an attack clip `age` seconds in. */
+const trailAt = (e: Entry, age: number) => {
+  const a = e.attack;
+  return { attack: a?.id ?? null, emitting: !!a && age >= a.startup && age <= a.startup + a.active };
+};
 
 const LOCO_VARIANTS: Array<[string, Record<string, number>]> = [
   ['loco idle', { locomotion: 0 }],
@@ -65,7 +76,7 @@ const entries: Entry[] = names.map((name, i) => {
   const z = -row * SPACING * 1.4;
   // Facing the camera (+Z), turned three quarters so slashes and flips read.
   view.sync(x, 0, z, YAW);
-  scene.add(view.root, view.hair);
+  scene.add(view.root);
 
   const label = document.createElement('div');
   label.className = 'hud-label';
@@ -81,8 +92,20 @@ const entries: Entry[] = names.map((name, i) => {
     animator.play(name);
   }
   const duration = loco ? 1 : CLIPS.get(name)!.duration;
-  if (at !== null) animator.tick(duration * at);
-  return { name, animator, view, duration, label, loco };
+  const attack = Object.values(ATTACKS).find((a) => a.anim === name);
+  const trail = new SwordTrail(view.sword);
+  scene.add(trail.mesh);
+  const entry: Entry = { name, animator, view, duration, label, loco, attack, trail };
+  if (at !== null) {
+    // Step up to the frozen moment so the trail behind the blade is there too.
+    const step = 1 / 60;
+    for (let t = 0; t < duration * at; t += step) {
+      animator.tick(Math.min(step, duration * at - t));
+      view.sync(x, 0, z, YAW);
+      trail.update(step, trailAt(entry, t));
+    }
+  }
+  return entry;
 });
 
 const rows = Math.ceil(names.length / COLS);
@@ -117,7 +140,7 @@ const frame = (now: number) => {
       e.animator.tick(dt);
     }
     e.view.sync(e.view.root.position.x, 0, e.view.root.position.z, YAW);
-    e.view.updateHair(at === null ? dt : 1 / 60);
+    if (at === null) e.trail.update(dt, trailAt(e, ages.get(e) ?? 0));
     const p = e.view.root.position.clone().setY(-0.15).project(camera);
     e.label.style.transform = `translate(${((p.x + 1) / 2) * window.innerWidth - 30}px, ${((1 - p.y) / 2) * window.innerHeight}px)`;
   }

@@ -39,7 +39,7 @@ export interface FrameInput {
  *   motor.step(realDt * playerScale)
  *   enemies.update(realDt * worldScale)
  *   combat.update()                        <- overlap tests, both directions
- *   feel.update(); camera; ponytail; render
+ *   feel.update(); camera; render
  *
  * The browser build swaps the fakes for Three.js adapters and keeps this loop.
  */

@@ -36,7 +36,7 @@ export const BONES: readonly BoneDef[] = [
   { id: 'spine', name: 'mixamorigSpine', parent: 'hips', offset: [0, 0.1, 0] },
   { id: 'chest', name: 'mixamorigSpine2', parent: 'spine', offset: [0, 0.18, 0] },
   { id: 'neck', name: 'mixamorigNeck', parent: 'chest', offset: [0, 0.19, 0] },
-  { id: 'head', name: 'mixamorigHead', parent: 'neck', offset: [0, 0.09, 0] },
+  { id: 'head', name: 'mixamorigHead', parent: 'neck', offset: [0, 0.08, 0] },
 
   { id: 'shoulderL', name: 'mixamorigLeftShoulder', parent: 'chest', offset: [-0.055, 0.145, 0] },
   { id: 'upperArmL', name: 'mixamorigLeftArm', parent: 'shoulderL', offset: [-0.11, 0, 0] },
@@ -59,5 +59,3 @@ export const BONES: readonly BoneDef[] = [
 
 export const BONE_IDS: readonly BoneId[] = BONES.map((b) => b.id);
 
-/** Where the ponytail is tied, in head-bone space: high on the back of the head. */
-export const PONYTAIL_SOCKET: [number, number, number] = [0, 0.215, 0.085];
