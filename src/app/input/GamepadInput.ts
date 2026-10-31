@@ -1,67 +1,87 @@
-import { length, scale, vec2, type Vec2 } from '../../core/math';
-import { Action } from '../../input/actions';
+import { vec2 } from '../../core/math';
+import { padFamily, padLabels, pickPad, readPad, type PadDebug, type PadFamily, type PadLabels } from './padLayout';
 import type { DeviceFrame, LookDelta } from './types';
 
-/** "standard" mapping indices: https://w3c.github.io/gamepad/#remapping */
-const BUTTON = { A: 0, X: 2, RB: 5, LT: 6 } as const;
-const AXIS = { LX: 0, LY: 1, RX: 2, RY: 3 } as const;
-
-const BINDINGS: ReadonlyArray<[number, Action]> = [
-  [BUTTON.X, Action.Attack],
-  [BUTTON.A, Action.Evade],
-  [BUTTON.RB, Action.Block],
-  [BUTTON.LT, Action.Target],
-];
-
-const STICK_DEADZONE = 0.15;
-const TRIGGER_THRESHOLD = 0.4;
 const LOOK_SPEED = 2.8; // radians per second at full tilt
 
+export interface PadConnection {
+  connected: boolean;
+  name: string;
+  family: PadFamily;
+}
+
 /**
- * Gamepad API. Polled, not event driven, so no tap latch is needed: anything held
- * across a poll is seen. Uses the first pad with the standard mapping.
+ * Gamepad API. Polled, not event driven, so no tap latch is needed: anything held across
+ * a poll is seen. Reads the first connected pad (standard mapping preferred), so pads
+ * that report no mapping still work. Layout logic lives in padLayout.ts (tested).
  */
 export class GamepadInput {
   name: string | null = null;
+  family: PadFamily = 'generic';
+  /** True on the poll where the pad was touched (stick or button). Devices uses it to pick the active device. */
+  touched = false;
+  onDebug?: (d: PadDebug) => void;
+  onConnection?: (c: PadConnection) => void;
 
-  poll(): DeviceFrame {
-    const pad = this.pad();
-    if (!pad) return { stick: vec2(), buttons: {} };
+  private prevDebug = new Set<PadDebug>();
+  private readonly off: Array<() => void> = [];
 
-    const buttons: Partial<Record<Action, boolean>> = {};
-    for (const [index, action] of BINDINGS) {
-      const b = pad.buttons[index];
-      if (b && (b.pressed || b.value > TRIGGER_THRESHOLD)) buttons[action] = true;
-    }
-    // Pad Y axes point down; the core's stick y is up/forward.
-    return { stick: deadzone(vec2(pad.axes[AXIS.LX] ?? 0, -(pad.axes[AXIS.LY] ?? 0))), buttons };
+  constructor() {
+    const listen = (type: 'gamepadconnected' | 'gamepaddisconnected', connected: boolean) => {
+      const fn = (e: GamepadEvent) =>
+        this.onConnection?.({ connected, name: e.gamepad.id, family: padFamily(e.gamepad.id) });
+      window.addEventListener(type, fn);
+      this.off.push(() => window.removeEventListener(type, fn));
+    };
+    listen('gamepadconnected', true);
+    listen('gamepaddisconnected', false);
   }
 
-  /** Right stick look for this render frame. */
+  get labels(): PadLabels {
+    return padLabels(this.family);
+  }
+
+  /** One fixed step's worth of input. */
+  poll(): DeviceFrame {
+    const pad = this.pad();
+    if (!pad) {
+      this.touched = false;
+      return { stick: vec2(), buttons: {} };
+    }
+    const f = readPad(pad);
+    this.touched = f.active;
+    return { stick: f.stick, buttons: f.buttons };
+  }
+
+  /** Right stick look for this render frame. Also fires debug button presses. */
   look(realDt: number): LookDelta {
     const pad = this.pad();
     if (!pad) return { yaw: 0, pitch: 0 };
-    const r = deadzone(vec2(pad.axes[AXIS.RX] ?? 0, pad.axes[AXIS.RY] ?? 0));
-    return { yaw: r.x * LOOK_SPEED * realDt, pitch: r.y * LOOK_SPEED * realDt };
+    const f = readPad(pad);
+    for (const d of f.debug) if (!this.prevDebug.has(d)) this.onDebug?.(d);
+    this.prevDebug = f.debug;
+    return { yaw: f.look.x * LOOK_SPEED * realDt, pitch: f.look.y * LOOK_SPEED * realDt };
+  }
+
+  /** Haptics, where the browser and pad support it. Magnitudes 0..1. */
+  rumble(strong: number, weak: number, ms: number): void {
+    const pad = this.pad() as Gamepad | null;
+    const actuator = pad?.vibrationActuator;
+    if (!actuator || typeof actuator.playEffect !== 'function') return;
+    actuator
+      .playEffect('dual-rumble', { duration: ms, strongMagnitude: strong, weakMagnitude: weak })
+      .catch(() => {}); // unsupported effect: no rumble, no error
+  }
+
+  dispose(): void {
+    for (const f of this.off) f();
   }
 
   private pad(): Gamepad | null {
     const pads = typeof navigator.getGamepads === 'function' ? navigator.getGamepads() : [];
-    for (const p of pads) {
-      if (p && p.connected && p.mapping === 'standard') {
-        this.name = p.id;
-        return p;
-      }
-    }
-    this.name = null;
-    return null;
+    const pad = pickPad(pads) as Gamepad | null;
+    this.name = pad?.id ?? null;
+    if (pad) this.family = padFamily(pad.id);
+    return pad;
   }
-}
-
-/** Radial deadzone, rescaled so the stick still reaches full length at the rim. */
-function deadzone(v: Vec2): Vec2 {
-  const l = length(v);
-  if (l < STICK_DEADZONE) return vec2();
-  const k = Math.min(1, (l - STICK_DEADZONE) / (1 - STICK_DEADZONE));
-  return scale(v, k / l);
 }

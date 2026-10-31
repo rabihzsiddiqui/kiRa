@@ -1,94 +1,101 @@
 import * as THREE from 'three';
-import { ATTACKS, attackDuration, EVADES } from '../combat/moves';
+import { Ponytail, type HeadFrame, type Sphere } from '../character/Ponytail';
+import { PONYTAIL_SOCKET } from '../character/rig';
 import { COLORS } from './ArenaView';
+import { buildFigure, type Figure } from './CharacterFigure';
 import { KEEP_COLOR_LAYER } from './PostFx';
 import type { ThreeAnimator } from './ThreeAnimator';
 
-const RADIUS = 0.35;
-const HALF_HEIGHT = 0.5;
-const CENTER = HALF_HEIGHT + RADIUS; // pivot for flips and rolls
-
-/** Clip lengths come from the move data, so the fake poses line up with the real timings. */
-const CLIP_LENGTH = new Map<string, number>([
-  ...Object.values(ATTACKS).map((d) => [d.anim, attackDuration(d)] as const),
-  ...Object.values(EVADES).map((d) => [d.anim, d.duration] as const),
-]);
-
-interface Pose {
-  pitch: number; // body, around her local X (forward roll is negative)
-  roll: number; // body, around her local Z
-  twist: number; // body, around Y
-  swordYaw: number; // sword pivot, around Y (positive swings toward her left)
-  swordPitch: number; // sword pivot, around X (positive points the blade up)
-}
-
-const REST: Pose = { pitch: 0, roll: 0, twist: 0, swordYaw: -0.6, swordPitch: -0.9 };
-
-const ease = (k: number) => 1 - (1 - k) ** 3;
-const clamp01 = (k: number) => Math.max(0, Math.min(1, k));
+const HAIR_COLOR = 0x101014;
 
 /**
- * Placeholder body: capsule, a nose to show facing, and a box katana in the right hand.
- * The pose is faked from the animator's clip name and age until real animations exist.
+ * Her body: the rigged placeholder figure (animated by ThreeAnimator), the katana on
+ * the right-hand bone, and the ponytail. `root` follows her feet; `hair` lives in world
+ * space (it trails behind her), so add both to the scene.
  */
 export class PlayerView {
   readonly root = new THREE.Group();
-  /** Her posed body (capsule, visor, sword). Afterimages snapshot this. */
-  readonly body = new THREE.Group();
-  private readonly swordPivot = new THREE.Group();
-  /** Phantom Dash dissolve: these fade and glow cyan together. */
-  private readonly dissolveMats: THREE.MeshStandardMaterial[] = [];
-  /** Real world position of the blade tip, for contact flashes. Updated in sync(). */
+  /** Her posed figure. Afterimages snapshot this. */
+  readonly body: THREE.Group;
+  /** World-space ponytail. */
+  readonly hair = new THREE.Group();
+  /** World position of the blade tip, for contact flashes. Updated in sync(). */
   readonly bladeTip = new THREE.Vector3();
-  private readonly blade: THREE.Mesh;
 
-  constructor(private readonly animator: ThreeAnimator) {
-    this.body.position.y = CENTER;
+  private readonly figure: Figure;
+  private readonly ponytail = new Ponytail();
+  private readonly hairSegments: THREE.Mesh[] = [];
+  private readonly hairJoints: THREE.Mesh[] = [];
+  private readonly dissolveMats: THREE.MeshStandardMaterial[];
+
+  constructor(animator: ThreeAnimator) {
+    this.figure = buildFigure();
+    this.body = this.figure.root;
     this.root.add(this.body);
+    animator.bind(this.body);
 
-    const skin = new THREE.MeshStandardMaterial({ color: COLORS.skin, roughness: 0.55 });
-    const capsule = new THREE.Mesh(new THREE.CapsuleGeometry(RADIUS, HALF_HEIGHT * 2, 8, 16), skin);
-    capsule.castShadow = true;
-    this.body.add(capsule);
-
-    // Visor on the front of the head. Local -Z is her forward (see src/physics/space.ts).
-    const visor = new THREE.Mesh(
-      new THREE.BoxGeometry(0.34, 0.08, 0.12),
-      new THREE.MeshStandardMaterial({ color: COLORS.indigo, emissive: COLORS.indigo, emissiveIntensity: 0.8 }),
-    );
-    visor.position.set(0, 0.52, -0.3);
-    this.body.add(visor);
-
-    // Right hand. Facing -Z, her right is +X.
-    this.swordPivot.position.set(RADIUS + 0.08, 0.05, -0.1);
-    this.body.add(this.swordPivot);
-
-    const handle = new THREE.Mesh(
-      new THREE.BoxGeometry(0.05, 0.05, 0.24),
-      new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.9 }),
-    );
-    handle.position.z = -0.06;
-    const guard = new THREE.Mesh(
-      new THREE.BoxGeometry(0.12, 0.02, 0.02),
-      new THREE.MeshStandardMaterial({ color: COLORS.indigoLight, metalness: 0.6, roughness: 0.3 }),
-    );
-    guard.position.z = -0.19;
-    const blade = new THREE.Mesh(
-      new THREE.BoxGeometry(0.025, 0.06, 0.95),
-      new THREE.MeshStandardMaterial({ color: 0xd4d4d8, metalness: 0.9, roughness: 0.2 }),
-    );
-    blade.position.z = -0.19 - 0.475;
-    for (const m of [handle, guard, blade]) {
-      m.castShadow = true;
-      this.swordPivot.add(m);
+    const hairMat = new THREE.MeshStandardMaterial({ color: HAIR_COLOR, roughness: 0.45, metalness: 0.1 });
+    const n = this.ponytail.cfg.segments;
+    const segGeo = new THREE.CylinderGeometry(1, 1, 1, 8, 1, true).translate(0, 0.5, 0); // base at the origin, along +Y
+    const jointGeo = new THREE.SphereGeometry(1, 8, 6);
+    for (let i = 0; i < n; i++) {
+      const r = this.hairRadius(i);
+      const seg = new THREE.Mesh(segGeo, hairMat);
+      seg.scale.set(r, 1, r);
+      const joint = new THREE.Mesh(jointGeo, hairMat);
+      joint.scale.setScalar(r);
+      for (const m of [seg, joint]) m.castShadow = true;
+      this.hairSegments.push(seg);
+      this.hairJoints.push(joint);
+      this.hair.add(seg, joint);
     }
-    this.blade = blade;
 
-    this.root.traverse((o) => {
-      o.layers.enable(KEEP_COLOR_LAYER); // she keeps her color while the world greys out
-      if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshStandardMaterial) this.dissolveMats.push(o.material);
-    });
+    for (const g of [this.root, this.hair]) g.traverse((o) => o.layers.enable(KEEP_COLOR_LAYER)); // she keeps her color
+    this.dissolveMats = [...this.figure.materials, hairMat];
     for (const m of this.dissolveMats) m.userData.base = { emissive: m.emissive.getHex(), intensity: m.emissiveIntensity };
+  }
+
+  /** `yaw` from yawFromFacing(); position is her feet. Bones are posed by the animator. */
+  sync(x: number, y: number, z: number, yaw: number): void {
+    this.root.position.set(x, y, z);
+    this.root.rotation.y = yaw;
+    this.root.updateMatrixWorld(true);
+    const blade = this.figure.blade;
+    blade.localToWorld(this.bladeTip.set(0, 0, -(blade.geometry as THREE.BoxGeometry).parameters.depth / 2));
+  }
+
+  /** Step the ponytail. `dt` is PLAYER-scaled, so her hair slows with her. Call after sync(). */
+  updateHair(dt: number): void {
+    const { bones } = this.figure;
+    const head = bones.head;
+    const q = head.getWorldQuaternion(new THREE.Quaternion());
+    const frame: HeadFrame = {
+      right: vec(new THREE.Vector3(1, 0, 0).applyQuaternion(q)),
+      up: vec(new THREE.Vector3(0, 1, 0).applyQuaternion(q)),
+      back: vec(new THREE.Vector3(0, 0, 1).applyQuaternion(q)),
+    };
+    const socket = vec(head.localToWorld(new THREE.Vector3(...PONYTAIL_SOCKET)));
+    const colliders: Sphere[] = [
+      { center: vec(head.localToWorld(new THREE.Vector3(0, 0.11, 0))), radius: 0.115 },
+      { center: vec(bones.neck.localToWorld(new THREE.Vector3(0, 0.04, 0))), radius: 0.06 },
+      { center: vec(bones.chest.localToWorld(new THREE.Vector3(0, 0.12, 0.05))), radius: 0.15 },
+    ];
+    this.ponytail.update(dt, socket, frame, colliders);
+
+    const p = this.ponytail.points;
+    const up = new THREE.Vector3(0, 1, 0);
+    const a = new THREE.Vector3();
+    const b = new THREE.Vector3();
+    for (let i = 0; i < this.hairSegments.length; i++) {
+      a.set(p[i].x, p[i].y, p[i].z);
+      b.set(p[i + 1].x, p[i + 1].y, p[i + 1].z);
+      const seg = this.hairSegments[i];
+      const d = b.clone().sub(a);
+      seg.position.copy(a);
+      seg.quaternion.setFromUnitVectors(up, d.clone().normalize());
+      seg.scale.y = d.length();
+      this.hairJoints[i].position.copy(b);
+    }
   }
 
   /** 0 = solid, 1 = mostly gone: see-through with a cyan glow (Phantom Dash). */
@@ -107,75 +114,10 @@ export class PlayerView {
     }
   }
 
-  /** `yaw` from yawFromFacing(); position is her feet. */
-  sync(x: number, y: number, z: number, yaw: number): void {
-    this.root.position.set(x, y, z);
-    this.root.rotation.y = yaw;
-
-    const p = this.pose();
-    this.body.rotation.set(p.pitch, p.twist, p.roll, 'YXZ');
-    this.swordPivot.rotation.set(p.swordPitch, p.swordYaw, 0, 'YXZ');
-    this.root.updateMatrixWorld(true);
-    this.blade.localToWorld(this.bladeTip.set(0, 0, -0.475));
-  }
-
-  private pose(): Pose {
-    const { clip, clipTime } = this.animator;
-    const len = CLIP_LENGTH.get(clip) ?? 0.5;
-    const k = clamp01(clipTime / len);
-
-    // Swings play over the first ~45% of the clip (startup + active), then hold.
-    const swing = ease(clamp01(clipTime / (len * 0.45)));
-    const blend = (a: number, b: number) => a + (b - a) * swing;
-
-    switch (clip) {
-      case 'atk_horizontal':
-        return { ...REST, swordPitch: -0.1, swordYaw: blend(-1.6, 1.4) };
-      case 'atk_reverse_horizontal':
-        return { ...REST, swordPitch: -0.1, swordYaw: blend(1.4, -1.6) };
-      case 'atk_vertical':
-      case 'atk_jump':
-      case 'atk_overpower':
-        return { ...REST, swordYaw: 0.3, swordPitch: 1.4 - 2.6 * swing, pitch: -0.25 * swing };
-      case 'atk_thrust':
-        return { ...REST, swordYaw: 0.25, swordPitch: 0, pitch: -0.2 * swing };
-      case 'atk_spin':
-        return { ...REST, swordPitch: -0.1, swordYaw: 1.4, twist: ease(k) * Math.PI * 2 };
-      case 'atk_phantom_dash':
-        return { ...REST, swordPitch: -0.1, swordYaw: blend(-1.8, 1.6), pitch: -0.35 };
-      case 'evade_roll':
-        return { ...REST, pitch: -ease(k) * Math.PI * 2 };
-      case 'evade_backflip':
-        return { ...REST, pitch: ease(k) * Math.PI * 2 };
-      case 'evade_hop_left':
-        return { ...REST, roll: 0.35 * Math.sin(k * Math.PI) };
-      case 'evade_hop_right':
-        return { ...REST, roll: -0.35 * Math.sin(k * Math.PI) };
-      case 'pd_aerial_cartwheel':
-        return { ...REST, roll: ease(clamp01(clipTime / 0.45)) * Math.PI * 2 };
-      case 'pd_corkscrew_left':
-      case 'pd_corkscrew_right':
-      case 'pd_backflip_twist':
-        return { ...REST, pitch: ease(clamp01(clipTime / 0.45)) * Math.PI * 2, twist: ease(clamp01(clipTime / 0.45)) * Math.PI };
-      case 'guard_raise':
-      case 'guard_impact':
-      case 'pb_clash_a':
-      case 'pb_clash_b':
-        return { ...REST, swordYaw: 1.35, swordPitch: 0.25 };
-      case 'spin_charge':
-        return { ...REST, swordYaw: -2.2, swordPitch: -0.2, twist: 0.5 };
-      case 'hurt':
-        return { ...REST, pitch: 0.3 * Math.sin(k * Math.PI) };
-      case 'locomotion': {
-        const a = this.animator;
-        if (a.getFloat('locomotion') === 2) {
-          // Strafing: lean into the move, body stays square to the target.
-          return { ...REST, pitch: -0.12 * a.getFloat('strafeY'), roll: -0.12 * a.getFloat('strafeX') };
-        }
-        return { ...REST, pitch: -0.03 * a.getFloat('speed') };
-      }
-      default:
-        return REST;
-    }
+  /** Thick at the tie, thin at the tip. */
+  private hairRadius(i: number): number {
+    return 0.034 - (0.022 * i) / Math.max(1, this.ponytail.cfg.segments - 1);
   }
 }
+
+const vec = (v: THREE.Vector3) => ({ x: v.x, y: v.y, z: v.z });

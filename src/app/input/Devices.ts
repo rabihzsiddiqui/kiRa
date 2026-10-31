@@ -4,13 +4,17 @@ import { GamepadInput } from './GamepadInput';
 import { KeyboardMouse } from './KeyboardMouse';
 import type { LookDelta } from './types';
 
+export type DeviceKind = 'keyboard' | 'gamepad';
+
 /**
  * Merges keyboard/mouse and gamepad into one RawInputSample per fixed step.
  * Buttons OR together; the stronger stick wins, so neither device fights the other.
+ * `active` is whichever was used last, so prompts show the right buttons.
  */
 export class Devices {
   readonly keyboard: KeyboardMouse;
   readonly gamepad = new GamepadInput();
+  active: DeviceKind = 'keyboard';
 
   constructor(canvas: HTMLCanvasElement) {
     this.keyboard = new KeyboardMouse(canvas);
@@ -20,6 +24,8 @@ export class Devices {
   poll(time: number): RawInputSample {
     const kb = this.keyboard.poll();
     const pad = this.gamepad.poll();
+    if (this.gamepad.touched) this.active = 'gamepad';
+    else if (this.keyboard.consumeTouched()) this.active = 'keyboard';
     const buttons: Partial<Record<Action, boolean>> = { ...kb.buttons };
     for (const [action, down] of Object.entries(pad.buttons) as Array<[Action, boolean]>) {
       if (down) buttons[action] = true;
@@ -37,5 +43,6 @@ export class Devices {
 
   dispose(): void {
     this.keyboard.dispose();
+    this.gamepad.dispose();
   }
 }

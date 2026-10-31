@@ -15,6 +15,7 @@
     "src/sandbox",
     "src/camera",
     "src/enemies",
+    "src/character",
     "src/physics/SimpleMotor.ts",
     "src/physics/space.ts"
   ]

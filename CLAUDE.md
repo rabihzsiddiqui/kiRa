@@ -9,7 +9,7 @@ Third-person katana combat sandbox. Twilight Princess moveset (Z-targeting, cont
 
 ```bash
 npm install
-npm run dev         # browser sandbox (vite), http://localhost:5173
+npm run dev         # browser sandbox (vite), http://localhost:5173 (clip gallery at /gallery.html)
 npm run build       # production build into dist/
 npm run typecheck   # tsc, strict, plus a no-DOM pass over the core (tsconfig.core.json)
 npm test            # headless scenario tests (node:test + tsx)
@@ -28,17 +28,18 @@ src/player      PlayerController, contracts (all interfaces + tuning), states/
 src/physics     CharacterMotor implementations (SimpleMotor, RapierMotor), RapierCameraProbe, planar <-> 3D mapping (space.ts)
 src/feel        CombatFeel: events -> slow-mo, hit stop, FX cues. PostGrade: cues + world clock -> screen/audio grade
 src/enemies     enemy attack strings (data) and TrainingDummyAI. Engine-free, world clock
+src/character   rig (bones, Mixamo names), clips (every animation as data), Ponytail (verlet). Engine-free
 src/camera      CameraRig: orbit, lock-on framing, spring arm, cue reactions. Engine-free, outputs a CameraPose
 src/sandbox     HeadlessSandbox (used by tests, shows the frame order)
-src/render      three.js: scene, player/dummy views, ThreeAnimator, CameraView, PostFx (bloom, grade), ThreeFx (VFX)
+src/render      three.js: scene, CharacterFigure + PlayerView, dummy view, ThreeAnimator (mixer), CameraView, PostFx, ThreeFx
 src/audio       SoundFx: procedural Web Audio, an FxSink like ThreeFx
-src/app         browser composition root: main.ts (loop), Game.ts (sim step), arena, devices, debug overlay
+src/app         browser composition root: main.ts (loop), Game.ts (sim step), arena, devices (keyboard, gamepad, rumble), overlay, gallery.ts
 test/           scenario tests driven by frame-by-frame input, motor tests, import boundary check
 ```
 
 ## Hard rules
 
-1. **The gameplay core stays engine-agnostic.** Nothing in `core, input, targeting, combat, fsm, player, feel, camera, enemies` may import three.js, Rapier, the DOM or any renderer. Engine code goes in `src/render`, `src/audio`, `src/app`, `src/physics/Rapier*.ts`, and talks to the core through the interfaces in `src/player/contracts.ts`.
+1. **The gameplay core stays engine-agnostic.** Nothing in `core, input, targeting, combat, fsm, player, feel, camera, enemies, character` may import three.js, Rapier, the DOM or any renderer. Engine code goes in `src/render`, `src/audio`, `src/app`, `src/physics/Rapier*.ts`, and talks to the core through the interfaces in `src/player/contracts.ts`.
 2. **Presentation only reacts to events.** Slow-mo, VFX, camera moves and audio are triggered from `EventBus` events or `FxSink` cues. Never put a timing dependency on presentation inside a state.
 3. **Moves are data.** New attack or evade = an entry in `src/combat/moves.ts` (plus a rule in `IntentResolver` if it has a new input). Don't add a state class per attack.
 4. **The button-to-move table lives in one place:** `resolveIntent()`. States ask for intent, they don't read buttons for move selection. (Exception: the perfect states latch the counter press directly.)

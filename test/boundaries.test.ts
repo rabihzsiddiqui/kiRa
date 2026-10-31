@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
  */
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '../src');
-const CORE_DIRS = ['core', 'input', 'targeting', 'combat', 'fsm', 'player', 'feel', 'sandbox', 'camera', 'enemies'];
+const CORE_DIRS = ['core', 'input', 'targeting', 'combat', 'fsm', 'player', 'feel', 'sandbox', 'camera', 'enemies', 'character'];
 const ENGINE_PACKAGES = /^(three|@dimforge\/|postprocessing)/;
 const BROWSER_ONLY = ['render', 'app', 'audio', 'physics/RapierMotor', 'physics/RapierCameraProbe'];
 

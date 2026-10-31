@@ -25,6 +25,8 @@ export class KeyboardMouse {
   private readonly latched = new Set<string>();
   private lookX = 0;
   private lookY = 0;
+  /** Any key, click or captured mouse move since the last poll. */
+  private touched = false;
   private readonly off: Array<() => void> = [];
 
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -47,6 +49,7 @@ export class KeyboardMouse {
       if (!this.pointerLocked) return;
       this.lookX += e.movementX;
       this.lookY += e.movementY;
+      if (e.movementX || e.movementY) this.touched = true;
     });
     // Releasing keys while the tab is in the background never fires keyup.
     this.listen(window, 'blur', () => this.down.clear());
@@ -87,6 +90,14 @@ export class KeyboardMouse {
   private press(src: string): void {
     this.down.add(src);
     this.latched.add(src);
+    this.touched = true;
+  }
+
+  /** True if the keyboard or mouse was used since the last call. */
+  consumeTouched(): boolean {
+    const t = this.touched;
+    this.touched = false;
+    return t;
   }
 
   private listen<K extends keyof WindowEventMap>(

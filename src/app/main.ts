@@ -18,6 +18,7 @@ import { CounterGlyph } from './CounterGlyph';
 import { DebugOverlay } from './DebugOverlay';
 import { Game, SIM_DT } from './Game';
 import { Devices } from './input/Devices';
+import { PadRumble } from './input/PadRumble';
 
 /** A long hitch (tab switch, breakpoint) is clamped so the sim doesn't fast-forward. */
 const MAX_FRAME_TIME = 0.25;
@@ -45,13 +46,13 @@ async function boot(): Promise<void> {
   const dummyView = new DummyView(ARENA.dummy.position, ARENA.dummy.radius, ARENA.dummy.height);
   const hitboxes = new HitboxDebugView();
   hitboxes.visible = false; // V shows hit areas and hurtboxes
-  arena.scene.add(playerView.root, dummyView.root, hitboxes.root);
+  arena.scene.add(playerView.root, playerView.hair, dummyView.root, hitboxes.root);
 
   // Presentation. Each one is an FxSink fed by CombatFeel's cues; none of them touch gameplay.
   const grade = new PostGrade({}, reducedMotion);
   const fx = new ThreeFx(arena.scene, cameraView.camera, playerView, reducedMotion);
   const sound = new SoundFx();
-  for (const sink of [grade, fx, sound]) game.addFxSink(sink);
+  for (const sink of [grade, fx, sound, new PadRumble(devices)]) game.addFxSink(sink);
   game.events.on('attackStarted', () => sound.swing());
   game.dummyAI.events.on('telegraph', ({ step }) => sound.telegraph(!!step.attack.unblockable));
   const post = new PostFx(arena.renderer, arena.scene, cameraView.camera, reducedMotion);
@@ -65,21 +66,43 @@ async function boot(): Promise<void> {
     window.__kiraFx = fx;
   }
 
-  // Debug keys live here, not in the devices: they are not gameplay actions.
+  // Debug controls live here, not in the devices: they are not gameplay actions.
+  const debug = {
+    toggleAI: () => game.dummyAI.setEnabled(!game.dummyAI.enabled),
+    /** Steps through: cycle, string 1, 2, 3, 4, cycle ... */
+    stepString: (dir: 1 | -1) => {
+      const order: Array<number | 'cycle'> = ['cycle', ...game.dummyAI.strings.map((_, i) => i)];
+      const at = order.indexOf(game.dummyAI.selection);
+      game.dummyAI.select(order[(at + dir + order.length) % order.length]);
+      toast(`dummy: ${game.dummyAI.selection === 'cycle' ? 'all strings' : game.dummyAI.strings[game.dummyAI.selection].label}`);
+    },
+    toggleHitAreas: () => (hitboxes.visible = !hitboxes.visible),
+    togglePause: () => (paused = !paused),
+  };
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
-    if (e.code === 'KeyH') game.dummyAI.setEnabled(!game.dummyAI.enabled);
+    if (e.code === 'KeyH') debug.toggleAI();
     // 1-4 pick one string to repeat, 0 cycles through all of them.
     const digit = /^Digit([0-4])$/.exec(e.code);
     if (digit) game.dummyAI.select(digit[1] === '0' ? 'cycle' : Number(digit[1]) - 1);
-    if (e.code === 'KeyV') hitboxes.visible = !hitboxes.visible;
-    if (e.code === 'KeyP') paused = !paused;
+    if (e.code === 'KeyV') debug.toggleHitAreas();
+    if (e.code === 'KeyP') debug.togglePause();
     if (e.code === 'KeyM') sound.toggleMute();
     if (e.code === 'Tab') {
       e.preventDefault();
       overlay.toggle();
     }
   });
+  devices.gamepad.onDebug = (d) => {
+    if (d === 'ai') debug.toggleAI();
+    else if (d === 'prevString') debug.stepString(-1);
+    else if (d === 'nextString') debug.stepString(1);
+    else if (d === 'hitAreas') debug.toggleHitAreas();
+    else if (d === 'pause') debug.togglePause();
+    else if (d === 'overlay') overlay.toggle();
+  };
+  devices.gamepad.onConnection = ({ connected, family }) =>
+    toast(connected ? `controller connected${family === 'generic' ? '' : `: ${family}`}` : 'controller disconnected');
 
   const resize = () => {
     arena.resize(window.innerWidth, window.innerHeight);
@@ -138,6 +161,7 @@ async function boot(): Promise<void> {
 
     // Paused: effects freeze too (a true freeze frame), the camera still orbits.
     const fxDt = paused ? 0 : realDt;
+    playerView.updateHair(fxDt * game.time.playerScale); // her hair slows with her
     fx.update(fxDt, worldDt);
     const g = grade.update(fxDt, game.time.worldScale);
     sound.setWorldLowpass(g.lowpassHz);
@@ -152,6 +176,20 @@ async function boot(): Promise<void> {
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+}
+
+/** Short message at the top of the screen, gone after a moment. */
+function toast(message: string): void {
+  let el = document.querySelector<HTMLElement>('.toast');
+  if (!el) {
+    el = document.createElement('p');
+    el.className = 'toast';
+    document.body.append(el);
+  }
+  el.textContent = message;
+  el.classList.add('toast-visible');
+  window.clearTimeout(Number(el.dataset.timer));
+  el.dataset.timer = String(window.setTimeout(() => el.classList.remove('toast-visible'), 2200));
 }
 
 boot().catch((err: unknown) => {

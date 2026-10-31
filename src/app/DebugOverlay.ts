@@ -1,14 +1,15 @@
 import { length } from '../core/math';
 import type { Devices } from './input/Devices';
+import type { PadLabels } from './input/padLayout';
 import type { Game } from './Game';
 
-const CONTROLS: ReadonlyArray<[string, string]> = [
-  ['move', 'wasd / left stick'],
-  ['look', 'mouse / right stick'],
-  ['attack', 'j / x'],
-  ['evade', 'space / a'],
-  ['block', 'k / rb'],
-  ['target', 'shift, right mouse / lt'],
+const KEYBOARD_CONTROLS: ReadonlyArray<[string, string]> = [
+  ['move', 'wasd'],
+  ['look', 'mouse'],
+  ['attack', 'j'],
+  ['evade', 'space'],
+  ['block', 'k'],
+  ['target', 'shift, right mouse'],
   ['jump atk', 'evade while locked on'],
   ['dummy ai', 'h on / off'],
   ['strings', '1 to 4, 0 cycles'],
@@ -16,6 +17,23 @@ const CONTROLS: ReadonlyArray<[string, string]> = [
   ['pause sim', 'p'],
   ['mute', 'm'],
   ['overlay', 'tab'],
+];
+
+/** Controls list for the active pad, in its own button names. */
+const padControls = (l: PadLabels): ReadonlyArray<[string, string]> => [
+  ['move', 'left stick'],
+  ['look', 'right stick'],
+  ['attack', l.attack],
+  ['evade', l.evade],
+  ['block', l.block],
+  ['target', l.target],
+  ['jump atk', 'evade while locked on'],
+  ['dummy ai', 'd-pad up'],
+  ['strings', 'd-pad left / right'],
+  ['hit areas', 'd-pad down'],
+  ['pause sim', 'start'],
+  ['mute', 'm'],
+  ['overlay', 'back'],
 ];
 
 /**
@@ -31,6 +49,8 @@ export class DebugOverlay {
   private readonly combat: HTMLElement;
   private readonly cues: HTMLElement;
   private readonly hint: HTMLElement;
+  private readonly controls: HTMLElement;
+  private controlsFor = '';
 
   constructor(
     parent: HTMLElement,
@@ -66,9 +86,8 @@ export class DebugOverlay {
     this.root.append(this.cues);
 
     this.root.append(section('controls'));
-    const controls = el('dl', 'hud-stats hud-controls');
-    for (const [k, v] of CONTROLS) controls.append(text('dt', 'hud-key', k), text('dd', 'hud-value', v));
-    this.root.append(controls);
+    this.controls = el('dl', 'hud-stats hud-controls');
+    this.root.append(this.controls);
 
     this.hint = text('p', 'hud-hint', 'click the arena to capture the mouse');
     parent.append(this.root, this.hint);
@@ -79,8 +98,11 @@ export class DebugOverlay {
   }
 
   update(fps: number): void {
-    this.hint.hidden = this.devices.keyboard.pointerLocked;
+    const onPad = this.devices.active === 'gamepad';
+    // The mouse hint only matters on keyboard and mouse.
+    this.hint.hidden = onPad || this.devices.keyboard.pointerLocked;
     if (this.root.hidden) return;
+    this.renderControls();
     const g = this.game;
     const m = g.motor;
 
@@ -97,10 +119,11 @@ export class DebugOverlay {
     const d = g.dummy;
     this.set('dummy', `${d.status}, poise ${Math.floor(d.poise.value)}/${d.poise.cfg.max}`);
     this.set('ai', aiText(g));
-    this.set(
-      'device',
-      `${this.devices.gamepad.name ? 'gamepad' : 'keyboard'}${this.devices.keyboard.pointerLocked ? ', mouse captured' : ''}, ${fps.toFixed(0)} fps`,
-    );
+    const pad = this.devices.gamepad;
+    const device = onPad
+      ? `${pad.family === 'generic' ? 'gamepad' : pad.family}`
+      : `keyboard${this.devices.keyboard.pointerLocked ? ', mouse captured' : ''}${pad.name ? ', pad idle' : ''}`;
+    this.set('device', `${device}, ${fps.toFixed(0)} fps`);
 
     setBar(this.worldBar, g.time.worldScale);
     setBar(this.playerBar, g.time.playerScale);
@@ -117,6 +140,16 @@ export class DebugOverlay {
       this.cues,
       g.fx.recent.slice(0, 4).map((c) => `${c.cue}  ${(g.realTime - c.at).toFixed(1)} s`),
     );
+  }
+
+  /** Rebuilt only when the active device (or pad family) changes. */
+  private renderControls(): void {
+    const onPad = this.devices.active === 'gamepad';
+    const key = onPad ? `pad:${this.devices.gamepad.family}` : 'keyboard';
+    if (key === this.controlsFor) return;
+    this.controlsFor = key;
+    const rows = onPad ? padControls(this.devices.gamepad.labels) : KEYBOARD_CONTROLS;
+    this.controls.replaceChildren(...rows.flatMap(([k, v]) => [text('dt', 'hud-key', k), text('dd', 'hud-value', v)]));
   }
 
   private set(key: string, value: string): void {

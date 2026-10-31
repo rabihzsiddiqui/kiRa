@@ -2,7 +2,7 @@
 
 The gameplay core is done and tested: input buffer, intent resolver, player FSM, hit resolution, perfect dodge/block, time scaling, targeting, and a reference motor. `npm run check` passes 26 scenario tests.
 
-Phases 1 to 5 are done. `npm run dev` runs the browser sandbox.
+Phases 1 to 6 are done. `npm run dev` runs the browser sandbox.
 
 Everything below is the presentation and world layer. Work the phases in order. Each one ends playable.
 
@@ -19,7 +19,7 @@ Everything below is the presentation and world layer. Work the phases in order. 
 - `src/app/main.ts`: fixed-step loop exactly as in ARCHITECTURE.md §2 (accumulator, 60 Hz sim, render interpolated).
 - `src/input/devices/`: keyboard + mouse and Gamepad API, both producing `RawInputSample`. Latch one-frame taps.
   - Keyboard: WASD move, mouse look, J attack, Space evade, K block, Shift/right mouse target. Jump attack is Space while locked on (neutral or forward stick).
-  - Gamepad: left stick, right stick camera, X attack, A evade, RB block, LT target.
+  - Gamepad: left stick, right stick camera, X attack, A evade, RB block, LT target (by position, so PlayStation is square / cross / R1 / L2). Any connected pad works, standard mapping or not; prompts and the overlay follow the last device used and the pad's family. Rumble on perfect dodge, perfect block, hits and hurt. Pad debug: start pause, back overlay, d-pad up AI, d-pad left/right strings, d-pad down hit areas. Layout logic is pure and tested in `test/padLayout.test.ts`.
 - `src/physics/RapierMotor.ts` implementing `CharacterMotor`.
 - `src/render/ThreeAnimator.ts` implementing `Animator` (log clip names until real animations exist).
 - Scene: dark arena floor, fog, one capsule player with a box katana on the right hand, one training dummy.
@@ -132,6 +132,13 @@ Implement `FxSink` in `src/render/ThreeFx.ts`. Gameplay already fires the cues a
 - Placeholder rigged female model, katana parented to the right-hand bone, tunic.
 - Ponytail per ARCHITECTURE.md §8 in `src/character/Ponytail.ts`. Unit test the chain: it settles under gravity and never exceeds its segment lengths.
 - Map every `animator.play()` clip name in the states to real or placeholder clips.
+
+**Status: done.** Notes:
+- The placeholder is built in code, no model file: `src/character/rig.ts` (bone hierarchy and proportions, Mixamo bone names) and `src/render/CharacterFigure.ts` (rigid meshes on the bones, tunic, hair, katana on the right-hand bone). A skinned glTF with Mixamo names can replace it without touching the clips.
+- All 24 clip names the states use are in `src/character/clips.ts`, written as plain functions of time (poses per bone, timed from `moves.ts`). `ThreeAnimator` samples them into three.js clips and runs an AnimationMixer on the player clock: crossfades use the blend time each state asks for, and 'locomotion' blends idle, run and four strafe clips from the setFloat params. `test/character.test.ts` fails if a state asks for a clip that does not exist.
+- Ponytail per §8 in `src/character/Ponytail.ts`: 7 segments, 120 Hz substeps on the player clock, follow-the-leader lengths (it cannot stretch), cone limit, weak rest pull, head/neck/back collision spheres, and a root clamp so a 9 m dash carries it instead of whipping it.
+- `/gallery.html` (dev only) shows every clip on its own figure. `?at=0.4` freezes them at 40%, `?only=atk` filters by name. Use it to tune poses.
+- Clip poses are a first pass, good enough to read each move. Tune them in the gallery, or swap in real animations.
 
 ## Phase 7: debug HUD
 

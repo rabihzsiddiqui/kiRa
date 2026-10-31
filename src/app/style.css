@@ -264,3 +264,37 @@ body {
     animation: none;
   }
 }
+
+/* ------------------------------------------------------------------ toast */
+
+.toast {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  margin: 0;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -8px);
+  transition:
+    opacity 200ms ease-out,
+    transform 200ms ease-out;
+}
+
+.toast-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    transition: opacity 200ms ease-out;
+    transform: translate(-50%, 0);
+  }
+}
