@@ -1,6 +1,6 @@
 # Handoff: what to build next
 
-The gameplay core is done and tested: input buffer, intent resolver, player FSM, hit resolution, perfect dodge/block, time scaling, targeting, and a reference motor. `npm run check` passes 114 tests.
+The gameplay core is done and tested: input buffer, intent resolver, player FSM, hit resolution, perfect dodge/block, time scaling, targeting, and a reference motor. `npm run check` passes 119 tests.
 
 Phases 1 to 7 are done. `npm run dev` runs the browser sandbox.
 
@@ -161,6 +161,12 @@ Dark, minimal overlay (indigo/cyan accents):
 - Lock-on strafing uses its own stance (`STANCE` in `clips.ts`: two hands, blade at the target's eyes). Blocking is a high horizontal guard (`GUARD`: blade level above her head, left palm under it). They no longer share arm poses.
 - The roll is a ground roll: dive, one turn balled up about the middle of the tuck (`hipsZ` moves the hips around that point), then up onto the feet. Each frame is placed on the floor by `src/character/fk.ts`, a small engine-free forward kinematics helper (`onGround`, `lowestPoint`). The sword turns out to her right, along the roll's axis, so it never digs into the floor. Tested in `test/character.test.ts`.
 - `onGround()` also places the kneeling cleave, the lunge and the new combo poses, so their feet sit on the floor. Older poses still sink about 5 cm because feet tilt with the knees (no ankle posing yet); worth a pass when real animations arrive.
+- Spin attack turns the way the stick went: a clockwise 360 gives `SpinClockwise` (backhand, turning right), counterclockwise gives `Spin` (forehand, turning left). Charged spins use `Spin`. Both clips are coil, one low wide turn with the blade level, follow-through.
+- Spin charge: the body holds a steady coil (no more full-body tremble). `src/render/BladeCharge.ts` reads `PlayerController.spinCharge` (0..1) and draws a sparkle running hilt to tip with a faint trail, a blade tremble that grows with the charge (off under reduced motion), then a flare and a blooming energy glow plus a small light on her once charged, held through the spin. Tagged noGhost so afterimages skip it.
+- Lock-on vignette: `PostGrade` eases a `vignette` value in over 0.25 s while targeting and out over 0.45 s; the grade shader darkens the edges toward deep indigo. Tested in `test/spectacle.test.ts`.
+- Character model rebuilt in `src/render/CharacterFigure.ts` on the same bones: lathe-profiled limbs and torso (tapered thighs, calves in knee boots, shaped arms with bracers, fingers round the grip), one sculpted head mesh (jaw, chin, nose, eyes, brows, ears), fringe and hair cap, and a tunic with a sash. The skirt is four panels hinged at the waist that swing out of the way of her thighs (`updateCloth`, called from `PlayerView.sync`).
+- Ponytail is drawn as a braid (instanced lobes along a smooth curve, a tie and a tuft). The fidgeting had two causes, both fixed and tested: the run bounce had a sharp kink at each footfall (now a smooth curve), and the 120 Hz chain saw the head jump once per frame instead of moving across its substeps. `Ponytail.renderPoints` also blends between substeps and pins the root to the head. Light air drag calms it further.
+- `/gallery.html` takes `?zoom=`, `?yaw=` and `?y=` for close-ups of the model.
 - Combo system: see ARCHITECTURE.md §4 "Combos". New swings: vertical left (`\`), thrust left, and four enders (spin, rising, cleave, lunge). Enders get a 0.06 s hit stop (`finisherHitStop`).
 - The traversal roll (any roll, since rolls only happen unlocked) eases into the run speed the stick is asking for instead of stopping, so rolling while running keeps her momentum. With the stick released it still eases to a stop. Side hops and backflips (locked on) still stop so landings don't skate.
 

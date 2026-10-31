@@ -61,7 +61,7 @@ test('perfect dodge greys the world out and muffles it, then eases back with the
   assert.equal(deep.aberration, 0, 'pulse is short (0.15 s)');
 
   for (let i = 0; i < 90; i++) g.step();
-  assert.deepEqual(g.frames.at(-1), { saturation: 1, tint: 0, aberration: 0, radialBlur: 0, lowpassHz: 20000 });
+  assert.deepEqual(g.frames.at(-1), { saturation: 1, tint: 0, aberration: 0, radialBlur: 0, lowpassHz: 20000, vignette: 0 });
 });
 
 test('counter: the grade eases out with the released slow-mo, no jumps, hit stop holds it', () => {
@@ -102,4 +102,31 @@ test('reduced motion: no aberration or radial blur, the grade still happens', ()
   for (let i = 0; i < 20; i++) g.step();
   assert.ok(g.frames.every((f) => f.aberration === 0 && f.radialBlur === 0));
   assert.ok(g.frames.at(-1)!.saturation < 0.4);
+});
+
+test('lock-on vignette closes in while targeting and opens back up after', () => {
+  const grade = new PostGrade();
+  const dt = 1 / 60;
+  let v = 0;
+  for (let i = 0; i < 6; i++) v = grade.update(dt, 1, true).vignette;
+  assert.ok(v > 0 && v < 1, `easing in (${v.toFixed(2)})`);
+  for (let i = 0; i < 30; i++) v = grade.update(dt, 1, true).vignette;
+  assert.equal(v, 1, 'fully in while locked');
+  for (let i = 0; i < 10; i++) v = grade.update(dt, 1, false).vignette;
+  assert.ok(v > 0 && v < 1, `easing out, no snap (${v.toFixed(2)})`);
+  for (let i = 0; i < 40; i++) v = grade.update(dt, 1, false).vignette;
+  assert.equal(v, 0);
+});
+
+test('the vignette does not disturb the perfect dodge grade', () => {
+  const a = new PostGrade();
+  const b = new PostGrade();
+  a.cue('perfectDodge');
+  b.cue('perfectDodge');
+  for (let i = 0; i < 10; i++) {
+    const x = a.update(1 / 60, 0.3, true);
+    const y = b.update(1 / 60, 0.3, false);
+    assert.equal(x.saturation, y.saturation);
+    assert.equal(x.tint, y.tint);
+  }
 });

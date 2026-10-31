@@ -68,7 +68,9 @@ export function resolveIntent(ctx: ResolveContext, opts: ResolveOptions): Intent
 
 function attackIntent(ctx: ResolveContext, press: BufferedPress, opts: ResolveOptions): Intent {
   if (ctx.input.hasSpinGesture()) {
-    return { kind: 'attack', attack: AttackId.Spin, presses: [press], usedSpinGesture: true };
+    // The spin turns the way the stick went round.
+    const attack = ctx.input.spinGestureDirection === 'clockwise' ? AttackId.SpinClockwise : AttackId.Spin;
+    return { kind: 'attack', attack, presses: [press], usedSpinGesture: true };
   }
 
   const frame = ctx.locked || ctx.untargetedFrame === 'character' ? ctx.facing : ctx.camera.forward;

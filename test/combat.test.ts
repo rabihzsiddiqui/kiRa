@@ -134,6 +134,20 @@ test('quick 360 on the stick + attack = spin', () => {
   assert.deepEqual(sb.attacks, [AttackId.Spin]);
 });
 
+test('the spin turns the way the stick went: clockwise 360 = clockwise spin', () => {
+  const spinWith = (sign: 1 | -1) => {
+    const sb = new HeadlessSandbox();
+    for (let i = 0; i <= 18; i++) {
+      const a = sign * (i / 18) * TAU * 0.95;
+      sb.step({ stick: vec2(Math.cos(a), Math.sin(a)) });
+    }
+    sb.step({ attack: true });
+    return sb.attacks;
+  };
+  assert.deepEqual(spinWith(-1), [AttackId.SpinClockwise]);
+  assert.deepEqual(spinWith(1), [AttackId.Spin]);
+});
+
 test('stick wiggle does not count as a 360', () => {
   const sb = new HeadlessSandbox();
   for (let i = 0; i < 30; i++) {

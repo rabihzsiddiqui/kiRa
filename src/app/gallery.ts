@@ -8,12 +8,16 @@ import { ThreeAnimator } from '../render/ThreeAnimator';
  * Dev tool: every clip on its own figure, in a grid. /gallery.html in `npm run dev`.
  *   ?at=0.4   freeze every clip at 40% of its length (good for checking poses)
  *   ?only=atk only clips whose name contains "atk"
+ *   ?zoom=3   move the camera in (close-ups of the model)
+ *   ?yaw=180  turn every figure, in degrees (180 = her back to the camera)
+ *   ?y=1.6    height the camera looks at (1.6 = her face)
  * Not part of the production build (Vite builds index.html only).
  */
 
 const params = new URLSearchParams(location.search);
 const at = params.has('at') ? Number(params.get('at')) : null;
 const only = params.get('only');
+const zoom = Math.max(0.2, Number(params.get('zoom') ?? 1));
 
 interface Entry {
   name: string;
@@ -51,7 +55,7 @@ scene.add(rim);
 const names = [...LOCO_VARIANTS.map(([n]) => n), ...CLIPS.keys()].filter((n) => !only || n.includes(only));
 const COLS = Math.min(6, names.length);
 const SPACING = 2.2;
-const YAW = Math.PI - 0.6;
+const YAW = params.has('yaw') ? Math.PI + (Number(params.get('yaw')) * Math.PI) / 180 : Math.PI - 0.6;
 const entries: Entry[] = names.map((name, i) => {
   const animator = new ThreeAnimator();
   const view = new PlayerView(animator);
@@ -84,8 +88,10 @@ const entries: Entry[] = names.map((name, i) => {
 const rows = Math.ceil(names.length / COLS);
 const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
 const depth = (rows - 1) * SPACING * 1.4;
-camera.position.set(0, 2.2 + depth * 0.35, 4.2 + Math.max(COLS * 0.9, depth * 0.6));
-camera.lookAt(0, 0.8, -depth / 2);
+const look = new THREE.Vector3(0, params.has('y') ? Number(params.get('y')) : zoom > 1.5 ? 1.05 : 0.8, -depth / 2);
+const from = new THREE.Vector3(0, 2.2 + depth * 0.35, 4.2 + Math.max(COLS * 0.9, depth * 0.6));
+camera.position.copy(look).add(from.sub(look).divideScalar(zoom));
+camera.lookAt(look);
 
 const resize = () => {
   renderer.setSize(window.innerWidth, window.innerHeight, false);

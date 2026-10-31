@@ -55,6 +55,7 @@ export class InputBuffer {
   private prevPressAt = new Map<Action, number>();
   private stickTrail: StickSample[] = [];
   private spinGestureAt = -Infinity;
+  private spinGestureClockwise = false;
   private nextId = 1;
   private _now = 0;
   private _stick: Vec2 = vec2();
@@ -155,6 +156,14 @@ export class InputBuffer {
     return this._now - this.spinGestureAt <= this.cfg.spinGestureLifetime;
   }
 
+  /**
+   * Which way the last completed 360 went, as seen on the stick (screen space, y up).
+   * Clockwise there is clockwise seen from above her, so the spin can turn the same way.
+   */
+  get spinGestureDirection(): 'clockwise' | 'counterclockwise' {
+    return this.spinGestureClockwise ? 'clockwise' : 'counterclockwise';
+  }
+
   consumeSpinGesture(): void {
     this.spinGestureAt = -Infinity;
   }
@@ -177,6 +186,7 @@ export class InputBuffer {
 
     if (Math.abs(sweep) >= this.cfg.spinMinSweep) {
       this.spinGestureAt = sample.time;
+      this.spinGestureClockwise = sweep < 0; // atan2 angles grow counterclockwise
       trail.length = 0;
     }
   }

@@ -46,6 +46,7 @@ export class PlayerController {
   private readonly perfectBlock = new PerfectBlockState();
   private readonly attackState = new AttackState();
   private readonly evadeState = new EvadeState();
+  private readonly spinChargeState = new SpinChargeState();
   /** The real windows, kept so the infinite-window debug switch can put them back. */
   private readonly windows: { dodge: number; block: number; lockout: number };
 
@@ -64,7 +65,7 @@ export class PlayerController {
       .add(new GuardState())
       .add(new GuardRecoilState())
       .add(new HitStunState())
-      .add(new SpinChargeState())
+      .add(this.spinChargeState)
       .add(new PerfectDodgeState())
       .add(this.perfectBlock);
 
@@ -91,6 +92,15 @@ export class PlayerController {
     if (this.state !== PlayerStateId.Attack) return null;
     const a = this.attackState;
     return { attack: a.attack, phase: a.phase, combo: a.comboIndex };
+  }
+
+  /**
+   * Spin charge progress, 0..1 (1 = charged), or null when not charging. Presentation
+   * reads it to draw the charge building along the blade.
+   */
+  get spinCharge(): number | null {
+    if (this.state !== PlayerStateId.SpinCharge) return null;
+    return Math.min(1, this.spinChargeState.chargeTime / this.ctx.tuning.spinChargeTime);
   }
 
   perfectWindows(): PerfectWindowReadout {

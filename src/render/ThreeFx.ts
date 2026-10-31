@@ -521,6 +521,12 @@ class Afterimage implements Transient {
       depthWrite: false,
     });
     this.ghost = source.clone(true); // shares geometry, copies the pose
+    // Effects riding on her (the blade charge) are not part of her silhouette.
+    const skip: THREE.Object3D[] = [];
+    this.ghost.traverse((o) => {
+      if (o.userData.noGhost) skip.push(o);
+    });
+    for (const o of skip) o.removeFromParent();
     this.ghost.traverse((o) => {
       if (o instanceof THREE.Mesh) {
         o.material = this.mat;

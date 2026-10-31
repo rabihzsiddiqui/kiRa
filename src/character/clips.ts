@@ -187,23 +187,27 @@ const HURT: Pose = {
   },
 };
 
-const CHARGE: Pose = {
-  hipsY: -0.14,
+/**
+ * Spin charge: coiled low, blade held level out to her right and back so it reads side-on
+ * from the camera (the charge sparkle runs along it). Left hand forward for balance.
+ */
+const CHARGE: Pose = onGround({
   bones: {
-    spine: [-15, -10, 0],
-    chest: [0, -45, 0],
-    shoulderR: [0, -90, 0],
-    upperArmR: [60, 0, 10],
-    forearmR: [20, 0, 0],
-    handR: [-100, 0, 0], // blade trailing low behind her
-    upperArmL: [45, 0, 10],
-    forearmL: [60, 0, 0],
-    thighL: [35, 0, 0],
-    shinL: [-45, 0, 0],
-    thighR: [-15, 0, 0],
-    shinR: [-35, 0, 0],
+    spine: [-12, -10, 0],
+    chest: [0, -35, 0],
+    neck: [0, 20, 0], // eyes stay forward while the body winds up
+    shoulderR: [0, -50, 0],
+    upperArmR: [50, 0, 30],
+    forearmR: [15, 0, 0],
+    handR: [-75, 0, 0],
+    upperArmL: [55, 0, 15],
+    forearmL: [70, 0, 0],
+    thighL: [40, 0, -8],
+    shinL: [-55, 0, 0],
+    thighR: [-15, 0, 12],
+    shinR: [-45, 0, 0],
   },
-};
+});
 
 const CLASH = (shoulderYaw: number, armPitch: number): Pose => ({
   hipsY: -0.08,
@@ -533,6 +537,48 @@ const A = ATTACKS;
 const E = EVADES;
 
 /**
+ * Spin attack. `turn` 1 = to her left (counterclockwise from above), -1 = to her right.
+ * Coiled the other way first, then one low, wide, fast turn with the blade held level out
+ * to the side it trails on, leaning into the turn, and a follow-through that carries the
+ * blade across her front. Counterclockwise trails the blade on her right (forehand);
+ * clockwise reaches it across to her left (backhand).
+ */
+function spinClip(id: AttackId.Spin | AttackId.SpinClockwise, turn: 1 | -1): ClipDef {
+  const d = A[id];
+  const s = turn; // mirrors yaw and lean; the sword stays in her right hand
+  const legs = {
+    thighL: [30, 0, -14] as Euler,
+    shinL: [-45, 0, 0] as Euler,
+    thighR: [-12, 0, 14] as Euler,
+    shinR: [-40, 0, 0] as Euler,
+  };
+  const lean = (p: Pose): Pose => ({
+    ...p,
+    bones: { ...p.bones, spine: [-12, 0, s * 8] as Euler, neck: [0, s * 25, 0] as Euler }, // lean in, look ahead
+  });
+  const coil = onGround(armOut(-s * 95, -s * 45, legs));
+  const sweep = onGround(lean(armOut(-s * 85, 0, legs)));
+  const follow = onGround(armOut(s * 55, s * 40, legs));
+  const end = d.startup + d.active;
+  const base = keyed([
+    [0, coil],
+    [d.startup, sweep],
+    [end, sweep],
+    [end + 0.1, follow],
+    [end + d.recovery * 0.45, follow],
+    [attackDuration(d), READY],
+  ]);
+  const wind = -s * 35; // starts wound the other way
+  return {
+    name: d.anim,
+    duration: attackDuration(d),
+    loop: false,
+    // One full turn plus the unwinding, fastest in the middle of the active window.
+    sample: (t) => withHips(base(t), [0, wind + s * (360 + 35) * span(t, d.startup * 0.3, end + 0.08), 0]),
+  };
+}
+
+/**
  * Spinning ender: coils to her right, then one full turn to the left with the blade held
  * wide and low, finishing in a deep follow-through. Faster and lower than the charged spin.
  */
@@ -592,17 +638,8 @@ const attackClips: ClipDef[] = [
   },
   attackClip(A[AttackId.FinisherLunge], LUNGE_WINDUP, LUNGE_STRIKE),
   attackClip(A[AttackId.Overpower], OVERHEAD(-0.12, true), CHOP(-0.2, true)),
-  {
-    name: A[AttackId.Spin].anim,
-    duration: attackDuration(A[AttackId.Spin]),
-    loop: false,
-    sample: (t) => {
-      const d = A[AttackId.Spin];
-      const out = armOut(-80, 0);
-      const base = t < d.startup + d.active + 0.1 ? out : lerpPose(out, READY, span(t, d.startup + d.active + 0.1, attackDuration(d)));
-      return withHips(base, [0, 360 * span(t, d.startup * 0.5, d.startup + d.active + 0.1), 0]);
-    },
-  },
+  spinClip(AttackId.Spin, 1),
+  spinClip(AttackId.SpinClockwise, -1),
   {
     name: A[AttackId.JumpAttack].anim,
     duration: attackDuration(A[AttackId.JumpAttack]),
@@ -788,8 +825,12 @@ const reactionClips: ClipDef[] = [
     name: 'spin_charge',
     duration: 1,
     loop: true,
-    // Coiled, with a fine tremble while the charge builds.
-    sample: (t) => withHips(CHARGE, [0, Math.sin(t * Math.PI * 2 * 8) * 2, 0]),
+    // Held steady and coiled: a slow breath only. The blade does the trembling (render
+    // side, BladeCharge), so the body reads as gathering power, not shaking.
+    sample: (t) => {
+      const b = Math.sin(t * Math.PI * 2);
+      return { ...CHARGE, hipsY: (CHARGE.hipsY ?? 0) - 0.006 * (1 + b), bones: { ...CHARGE.bones, chest: [1.5 * b, -35, 0] } };
+    },
   },
   {
     name: 'fall',
@@ -823,7 +864,7 @@ function gait(period: number, stride: number, lean: number, arms: 'swing' | 'sta
     const s = Math.sin(p);
     const base = arms === 'stance' ? STANCE : READY;
     return {
-      hipsY: -0.05 + 0.035 * Math.abs(Math.cos(p)),
+      hipsY: -0.05 + 0.035 * (0.5 + 0.5 * Math.cos(2 * p)), // same rhythm as |cos p|, no kink at footfall
       bones: {
         ...base.bones,
         spine: [lean, 0, 0],
@@ -850,7 +891,7 @@ function sideStep(dir: 1 | -1) {
     const open = 0.5 + 0.5 * Math.sin(p);
     // dir 1 = to her right: right leg reaches out (Z+), left follows.
     return {
-      hipsY: -0.07 + 0.025 * Math.abs(Math.cos(p)),
+      hipsY: -0.07 + 0.025 * (0.5 + 0.5 * Math.cos(2 * p)),
       bones: {
         ...STANCE.bones,
         thighR: [10, 0, dir * 22 * open],

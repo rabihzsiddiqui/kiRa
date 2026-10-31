@@ -6,7 +6,9 @@ import { SoundFx } from '../audio/SoundFx';
 import { PostGrade } from '../feel/PostGrade';
 import { RapierCameraProbe } from '../physics/RapierCameraProbe';
 import { planarFrom3 } from '../physics/space';
+import { AttackId } from '../combat/moves';
 import { ArenaView } from '../render/ArenaView';
+import { BladeCharge } from '../render/BladeCharge';
 import { CameraView } from '../render/CameraView';
 import { DummyView } from '../render/DummyView';
 import { HitboxDebugView } from '../render/HitboxDebugView';
@@ -55,6 +57,7 @@ async function boot(): Promise<void> {
   for (const sink of [grade, fx, sound, new PadRumble(devices)]) game.addFxSink(sink);
   game.events.on('attackStarted', () => sound.swing());
   game.dummyAI.events.on('telegraph', ({ step }) => sound.telegraph(!!step.attack.unblockable));
+  const bladeCharge = new BladeCharge(playerView.sword, reducedMotion);
   const post = new PostFx(arena.renderer, arena.scene, cameraView.camera, reducedMotion);
   const glyph = new CounterGlyph(document.body, game, devices);
   const chest = new THREE.Vector3();
@@ -184,8 +187,13 @@ async function boot(): Promise<void> {
     // Paused: effects freeze too (a true freeze frame), the camera still orbits.
     const fxDt = paused ? 0 : realDt;
     playerView.updateHair(fxDt * game.time.playerScale); // her hair slows with her
+    const swing = game.player.attack?.attack;
+    bladeCharge.update(fxDt, {
+      charge: game.player.spinCharge,
+      spinning: swing === AttackId.Spin || swing === AttackId.SpinClockwise,
+    });
     fx.update(fxDt, worldDt);
-    const g = grade.update(fxDt, game.time.worldScale);
+    const g = grade.update(fxDt, game.time.worldScale, game.targeting.isLocked);
     sound.setWorldLowpass(g.lowpassHz);
     chest.set(pose.pos.x, pose.pos.y + 1.2, pose.pos.z);
     const ndc = chest.clone().project(cameraView.camera);

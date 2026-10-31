@@ -35,6 +35,11 @@ export interface PonytailConfig {
   restDir: Vec3;
   /** Root may move this far per substep; beyond that the whole chain is carried along. */
   maxRootStep: number;
+  /**
+   * Air drag, per second, on each point's speed through the world. Calms the chain's
+   * response to every footfall and lets the hair trail back when she runs.
+   */
+  airDrag: number;
 }
 
 export const DEFAULT_PONYTAIL: PonytailConfig = {
@@ -48,6 +53,7 @@ export const DEFAULT_PONYTAIL: PonytailConfig = {
   restPull: 0.04,
   restDir: { x: 0, y: -0.75, z: 0.66 }, // down and back
   maxRootStep: 0.08,
+  airDrag: 4,
 };
 
 export class Ponytail {
@@ -57,6 +63,8 @@ export class Ponytail {
   private readonly prev: Vec3[];
   private acc = 0;
   private started = false;
+  /** Where the socket was at the end of the last update, so substeps can follow its path. */
+  private lastSocket: Vec3 = { x: 0, y: 0, z: 0 };
 
   constructor(cfg: Partial<PonytailConfig> = {}) {
     this.cfg = { ...DEFAULT_PONYTAIL, ...cfg };
@@ -74,6 +82,7 @@ export class Ponytail {
       this.prev[i] = { ...p };
     }
     this.started = true;
+    this.lastSocket = { ...socket };
   }
 
   /**
@@ -82,11 +91,55 @@ export class Ponytail {
    */
   update(dt: number, socket: Vec3, head: HeadFrame, colliders: readonly Sphere[] = []): void {
     if (!this.started) this.reset(socket, head);
-    this.acc = Math.min(this.acc + Math.max(0, dt), this.cfg.substep * 8); // never spiral
-    while (this.acc >= this.cfg.substep) {
-      this.acc -= this.cfg.substep;
-      this.step(socket, head, colliders);
+    const step = this.cfg.substep;
+    const span = Math.max(0, dt);
+    const acc0 = this.acc;
+    this.acc = Math.min(this.acc + span, step * 8); // never spiral
+    // Each substep sees the socket where it was at that moment in the frame, not where it
+    // ends up. Otherwise the root jumps on the first substep and sits still for the rest,
+    // and its speed flickers with however many substeps the frame happened to need.
+    let j = 0;
+    while (this.acc >= step) {
+      this.acc -= step;
+      j++;
+      const f = span > 0 ? Math.min(1, (j * step - acc0) / span) : 1;
+      const at = {
+        x: this.lastSocket.x + (socket.x - this.lastSocket.x) * f,
+        y: this.lastSocket.y + (socket.y - this.lastSocket.y) * f,
+        z: this.lastSocket.z + (socket.z - this.lastSocket.z) * f,
+      };
+      this.step(at, head, colliders);
     }
+    this.lastSocket = { ...socket };
+  }
+
+  /**
+   * Points to draw this frame. The chain steps at 120 Hz but frames come at any rate, so
+   * drawing the raw points makes the hair hop by a different amount each frame (it reads
+   * as fidgeting). This blends between the last two substeps by the leftover time, then
+   * pins the root to where the socket is right now, easing that correction down the chain.
+   */
+  renderPoints(socket: Vec3, out: Vec3[] = this.points.map(() => ({ x: 0, y: 0, z: 0 }))): Vec3[] {
+    const k = this.acc / this.cfg.substep;
+    const n = this.points.length;
+    for (let i = 0; i < n; i++) {
+      const a = this.prev[i];
+      const b = this.points[i];
+      const o = out[i];
+      o.x = a.x + (b.x - a.x) * k;
+      o.y = a.y + (b.y - a.y) * k;
+      o.z = a.z + (b.z - a.z) * k;
+    }
+    const dx = socket.x - out[0].x;
+    const dy = socket.y - out[0].y;
+    const dz = socket.z - out[0].z;
+    for (let i = 0; i < n; i++) {
+      const w = 1 - i / (n - 1);
+      out[i].x += dx * w;
+      out[i].y += dy * w;
+      out[i].z += dz * w;
+    }
+    return out;
   }
 
   private step(socket: Vec3, head: HeadFrame, colliders: readonly Sphere[]): void {
@@ -107,9 +160,10 @@ export class Ponytail {
     x[0] = { ...socket };
     prev[0] = { ...socket };
 
-    // 2. Verlet integrate: keep momentum (damped), add gravity.
+    // 2. Verlet integrate: keep momentum (damped, plus air drag), add gravity.
+    const keep = cfg.damping * Math.max(0, 1 - cfg.airDrag * dt);
     for (let i = 1; i < x.length; i++) {
-      const v = scale(sub(x[i], prev[i]), cfg.damping);
+      const v = scale(sub(x[i], prev[i]), keep);
       prev[i] = x[i];
       x[i] = add(add(x[i], v), { x: 0, y: -cfg.gravity * dt * dt, z: 0 });
     }

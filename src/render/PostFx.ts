@@ -22,6 +22,7 @@ const GradeShader = {
     aberration: { value: 0 },
     radialBlur: { value: 0 },
     center: { value: new THREE.Vector2(0.5, 0.5) },
+    vignette: { value: 0 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -38,6 +39,7 @@ const GradeShader = {
     uniform float aberration;
     uniform float radialBlur;
     uniform vec2 center;
+    uniform float vignette;
     varying vec2 vUv;
 
     // Chromatic aberration: red and blue pushed apart along the line from the center.
@@ -66,7 +68,16 @@ const GradeShader = {
 
       // She keeps her color: the mask is white where she is drawn.
       float keep = texture2D(tMask, vUv).r;
-      gl_FragColor = vec4(mix(graded, col, keep), 1.0);
+      vec3 outCol = mix(graded, col, keep);
+
+      // Lock-on vignette: an oval that follows the screen's shape, edges sinking toward
+      // a deep indigo instead of plain black, so it stays in the palette.
+      if (vignette > 0.001) {
+        float r = length((vUv - 0.5) * 2.0); // 1 at the edge midpoints, 1.41 in the corners
+        float edge = smoothstep(0.45, 1.35, r) * vignette;
+        outCol = mix(outCol, outCol * vec3(0.12, 0.12, 0.26), edge * 0.92);
+      }
+      gl_FragColor = vec4(outCol, 1.0);
     }`,
 };
 
@@ -120,6 +131,7 @@ export class PostFx {
     u.aberration.value = params.aberration;
     u.radialBlur.value = params.radialBlur;
     u.center.value.copy(focus);
+    u.vignette.value = params.vignette;
 
     // The mask only matters while the world is graded; skip the extra pass otherwise.
     if (params.saturation < 0.999 || params.tint > 0.001) this.renderMask();

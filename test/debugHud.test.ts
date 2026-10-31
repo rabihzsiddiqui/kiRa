@@ -153,3 +153,15 @@ test('slow-mo off: hit stops stay, and switching off mid slow-mo releases the cl
   assert.equal(sb.time.worldScale, 1);
   assert.ok(sb.cues.includes('slowmo.end'), 'post-processing is told to ease back');
 });
+
+test('spin charge readout: null until charging, fills to 1, null again after the spin', () => {
+  const sb = new HeadlessSandbox();
+  assert.equal(sb.player.spinCharge, null);
+  sb.run(30, { attack: true }); // slash, then holding into the charge
+  const early = sb.player.spinCharge;
+  assert.ok(early !== null && early > 0 && early < 0.5, `building (${early})`);
+  sb.run(50, { attack: true });
+  assert.equal(sb.player.spinCharge, 1);
+  sb.step({});
+  assert.equal(sb.player.spinCharge, null, 'released into the spin');
+});

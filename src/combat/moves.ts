@@ -15,7 +15,10 @@ export enum AttackId {
   Thrust = 'thrust',
   /** Second stab, drawn back across her left side. */
   ThrustLeft = 'thrust_left',
+  /** Turns to her left: counterclockwise seen from above. Charged spins and counterclockwise 360s. */
   Spin = 'spin',
+  /** Turns to her right: a clockwise 360 on the stick. */
+  SpinClockwise = 'spin_clockwise',
   JumpAttack = 'jump_attack',
   /** Perfect dodge counter: a blur-fast dash slash into the attacker. */
   PhantomDash = 'phantom_dash',
@@ -133,6 +136,14 @@ export const ATTACKS: Readonly<Record<AttackId, AttackDef>> = {
   },
   [AttackId.Spin]: {
     id: AttackId.Spin, anim: 'atk_spin', damage: 2,
+    startup: 0.08, active: 0.35, recovery: 0.35,
+    comboOpen: Infinity, evadeCancel: 0.6, blockCancel: 0.6,
+    lunge: 1, tracking: 0, endSide: 'left', chargeable: false,
+    poiseDamage: 25,
+    hit: { kind: 'arc', range: 2.4, arcDeg: 360 },
+  },
+  [AttackId.SpinClockwise]: {
+    id: AttackId.SpinClockwise, anim: 'atk_spin_clockwise', damage: 2,
     startup: 0.08, active: 0.35, recovery: 0.35,
     comboOpen: Infinity, evadeCancel: 0.6, blockCancel: 0.6,
     lunge: 1, tracking: 0, endSide: 'right', chargeable: false,

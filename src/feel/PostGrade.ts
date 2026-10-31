@@ -12,6 +12,8 @@ export interface GradeParams {
   radialBlur: number;
   /** Low-pass cutoff on world sound (enemies, ambience). Her own sounds bypass it. */
   lowpassHz: number;
+  /** 0..1 lock-on vignette: the screen edges close in while she is targeting. */
+  vignette: number;
 }
 
 export interface GradeTuning {
@@ -27,6 +29,9 @@ export interface GradeTuning {
   pulseTime: number;
   lowpassMin: number;
   lowpassMax: number;
+  /** Seconds for the lock-on vignette to close in, and to open back up. */
+  vignetteIn: number;
+  vignetteOut: number;
 }
 
 export const DEFAULT_GRADE: GradeTuning = {
@@ -38,9 +43,11 @@ export const DEFAULT_GRADE: GradeTuning = {
   pulseTime: 0.15,
   lowpassMin: 650,
   lowpassMax: 20000,
+  vignetteIn: 0.25,
+  vignetteOut: 0.45,
 };
 
-const NEUTRAL: GradeParams = { saturation: 1, tint: 0, aberration: 0, radialBlur: 0, lowpassHz: 20000 };
+const NEUTRAL: GradeParams = { saturation: 1, tint: 0, aberration: 0, radialBlur: 0, lowpassHz: 20000, vignette: 0 };
 
 /**
  * Director for the perfect dodge look. Cues say WHEN (perfectDodge on, slowmo.end off);
@@ -53,6 +60,7 @@ export class PostGrade implements FxSink {
   private k = 0; // 0 neutral .. 1 full perfect dodge grade
   private pulseLeft = 0;
   private pulseStrength = 0;
+  private lock = 0;
 
   constructor(
     tuning: Partial<GradeTuning> = {},
@@ -81,10 +89,13 @@ export class PostGrade implements FxSink {
     }
   }
 
-  /** Real dt; worldScale from TimeController. */
-  update(realDt: number, worldScale: number): GradeParams {
+  /** Real dt; worldScale from TimeController; `locked` = she is targeting something. */
+  update(realDt: number, worldScale: number, locked = false): GradeParams {
     const t = this.tuning;
     this.pulseLeft = Math.max(0, this.pulseLeft - realDt);
+    // On real time, so it frames the lock the same way in slow-mo.
+    this.lock = locked ? Math.min(1, this.lock + realDt / t.vignetteIn) : Math.max(0, this.lock - realDt / t.vignetteOut);
+    const vignette = smooth(this.lock);
 
     if (worldScale >= t.hitStopBelow || !this.dodge) {
       const target = this.dodge ? clamp01((1 - worldScale) / (1 - t.slowestWorld)) : 0;
@@ -94,13 +105,14 @@ export class PostGrade implements FxSink {
 
     const k = this.k;
     const p = this.reducedMotion ? 0 : this.pulseStrength * smooth(this.pulseLeft / t.pulseTime);
-    if (k === 0 && p === 0) return { ...NEUTRAL, lowpassHz: t.lowpassMax };
+    if (k === 0 && p === 0) return { ...NEUTRAL, lowpassHz: t.lowpassMax, vignette };
     return {
       saturation: 1 - (1 - t.dodgeSaturation) * k,
       tint: t.dodgeTint * k,
       aberration: p,
       radialBlur: p,
       lowpassHz: t.lowpassMax * (t.lowpassMin / t.lowpassMax) ** k,
+      vignette,
     };
   }
 

@@ -143,3 +143,29 @@ test('the roll stays on the floor all the way round: no sinking in, no floating'
   // It turns about the middle of the tucked body, so the hips swing around that point.
   assert.ok(maxShift > 0.2, `hips move around the tuck's center (${maxShift.toFixed(2)} m)`);
 });
+
+test('ponytail draws smoothly at uneven frame rates while she runs (no fidgeting)', () => {
+  // Head running forward with a smooth step bounce; frames arrive 13 to 20 ms apart.
+  const frame: HeadFrame = { right: { x: 1, y: 0, z: 0 }, up: { x: 0, y: 1, z: 0 }, back: { x: 0, y: 0, z: 1 } };
+  const p = new Ponytail();
+  let t = 0;
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const rel: Vec3[] = [];
+  for (let f = 0; f < 600; f++) {
+    const dt = 1 / 60 + (rnd() - 0.5) * 0.007;
+    t += dt;
+    const socket = { x: 0, y: 1.68 + 0.03 * (0.5 - 0.5 * Math.cos((2 * Math.PI * t) / 0.33)), z: -6 * t };
+    p.update(dt, socket, frame);
+    const pts = p.renderPoints(socket);
+    const tip = pts[pts.length - 1];
+    rel.push({ x: tip.x - socket.x, y: tip.y - socket.y, z: tip.z - socket.z });
+  }
+  // Frame-to-frame change in the tip's motion relative to her head, after it settles.
+  let jerk = 0;
+  for (let i = 302; i < rel.length; i++) {
+    for (const k of ['x', 'y', 'z'] as const) jerk += Math.abs(rel[i][k] - 2 * rel[i - 1][k] + rel[i - 2][k]);
+  }
+  const mm = (jerk / (rel.length - 302)) * 1000;
+  assert.ok(mm < 5, `tip jumpiness ${mm.toFixed(1)} mm per frame squared`);
+});
