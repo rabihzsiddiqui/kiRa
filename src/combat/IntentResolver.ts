@@ -2,7 +2,7 @@ import { Action } from '../input/actions';
 import type { BufferedPress, InputBuffer } from '../input/InputBuffer';
 import { length, normalize, rightOf, scale, type Vec2 } from '../core/math';
 import { classifyDir, Dir, stickToWorld, type CameraBasis } from './direction';
-import { AttackId, ATTACKS, EvadeId } from './moves';
+import { AttackId, ATTACKS, COMBO, EvadeId, SwingFamily } from './moves';
 
 /**
  * What the player is asking for this frame. Pure data: the FSM decides whether
@@ -26,13 +26,18 @@ export interface ResolveContext {
    * 'camera': relative to the camera (stick up + Attack = vertical, always).
    */
   untargetedFrame: 'character' | 'camera';
+  /** Hits in a full combo. The last one is the ender (PlayerTuning.maxCombo). */
+  maxCombo: number;
 }
 
 export interface ResolveOptions {
   allowAttack: boolean;
   allowEvade: boolean;
-  /** Set when chaining from an attack, to drive combo alternation. */
-  comboFrom?: AttackId;
+  /**
+   * Set when chaining from an attack. `from` is the swing in progress (the next one flows
+   * from where it leaves the blade), `step` the 0-based index of the swing being picked.
+   */
+  combo?: { from: AttackId; step: number };
 }
 
 const NONE: Intent = { kind: 'none' };
@@ -40,7 +45,9 @@ const NONE: Intent = { kind: 'none' };
 /**
  * The whole button-to-move table lives here, in one readable function.
  * Oldest press wins (Attack or Evade):
- *   Attack: 360 gesture -> Spin, else directional table
+ *   Attack: 360 gesture -> Spin, else directional table -> swing family, then COMBO
+ *           picks the swing: opener, the variant that flows from the last swing, or
+ *           (on the last hit of a full combo) that family's ender
  *   Evade:  untargeted -> Roll
  *           targeted   -> Left/Right = side hop, Back = backflip,
  *                         Neutral/Forward = jump attack (no rolling while locked on)
@@ -67,30 +74,32 @@ function attackIntent(ctx: ResolveContext, press: BufferedPress, opts: ResolveOp
   const frame = ctx.locked || ctx.untargetedFrame === 'character' ? ctx.facing : ctx.camera.forward;
   const dir = classifyDir(stickToWorld(press.stick, ctx.camera), frame, ctx.dirDeadzone);
 
-  let attack = pickAttack(dir, ctx.locked);
-  if (opts.comboFrom && attack === opts.comboFrom) {
-    attack = ATTACKS[opts.comboFrom].comboNext ?? attack;
-  }
+  const family = COMBO[pickFamily(dir, ctx.locked)];
+  const { combo } = opts;
+  const attack =
+    !combo ? family.opener
+    : combo.step >= ctx.maxCombo - 1 ? family.finisher
+    : family.from[ATTACKS[combo.from].endSide];
   return { kind: 'attack', attack, presses: [press], usedSpinGesture: false };
 }
 
 /**
- * Side slashes travel the way the stick points: Horizontal sweeps right to left (her
- * forehand), ReverseHorizontal sweeps left to right. So Right + Attack = Reverse.
+ * Side slashes travel the way the stick points: Horizontal opens with a sweep right to
+ * left (her forehand), Reverse with a sweep left to right. So Right + Attack = Reverse.
  */
-export function pickAttack(dir: Dir, locked: boolean): AttackId {
+export function pickFamily(dir: Dir, locked: boolean): SwingFamily {
   if (locked) {
     switch (dir) {
-      case Dir.Forward: return AttackId.Thrust;
-      case Dir.Right: return AttackId.ReverseHorizontal;
-      case Dir.Neutral: return AttackId.Vertical;
-      default: return AttackId.Horizontal;
+      case Dir.Forward: return SwingFamily.Thrust;
+      case Dir.Right: return SwingFamily.Reverse;
+      case Dir.Neutral: return SwingFamily.Vertical;
+      default: return SwingFamily.Horizontal;
     }
   }
   switch (dir) {
-    case Dir.Forward: return AttackId.Vertical;
-    case Dir.Right: return AttackId.ReverseHorizontal;
-    default: return AttackId.Horizontal;
+    case Dir.Forward: return SwingFamily.Vertical;
+    case Dir.Right: return SwingFamily.Reverse;
+    default: return SwingFamily.Horizontal;
   }
 }
 

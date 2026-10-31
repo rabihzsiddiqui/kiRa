@@ -134,15 +134,15 @@ otherwise                    -> HitStun
 
 ## 4. Input to move table
 
-All of this lives in `resolveIntent()` (`src/combat/IntentResolver.ts`). Directions are relative to her facing, sampled when the button was pressed.
+All of this lives in `resolveIntent()` (`src/combat/IntentResolver.ts`). Directions are relative to her facing, sampled when the button was pressed. An attack input picks a swing family; the combo table in `moves.ts` (`COMBO`) picks the swing.
 
 | Input | Untargeted | Targeted |
 |---|---|---|
-| Attack | Horizontal | Vertical |
-| Forward + Attack | Vertical | Thrust |
-| Right + Attack | Reverse horizontal (sweeps left to right) | Reverse horizontal |
-| Left / Back + Attack | Horizontal (sweeps right to left) | Horizontal |
-| Attack repeated in combo window | H → RH → H ... | same |
+| Attack | Horizontal family | Vertical family |
+| Forward + Attack | Vertical family | Thrust family |
+| Right + Attack | Reverse family (opens sweeping left to right) | Reverse family |
+| Left / Back + Attack | Horizontal family (opens sweeping right to left) | Horizontal family |
+| Attack in combo window | the family's next swing (below) | same |
 | Hold Attack, release when charged | Spin | Spin |
 | 360 stick + Attack | Spin | Spin |
 | Evade | Forward roll (stick dir) | Jump attack (no rolling while locked on) |
@@ -154,6 +154,19 @@ All of this lives in `resolveIntent()` (`src/combat/IntentResolver.ts`). Directi
 | Block pressed, hit lands in first 0.12 s | Perfect block → Attack = Overpower | same |
 
 Tunable: `untargetedFrame: 'camera'` makes untargeted Forward/Left relative to the camera instead of her facing.
+
+### Combos
+
+A combo is up to `maxCombo` (4) swings. Repeating an input never repeats the same swing: every swing records which side the blade finishes on (`AttackDef.endSide`), and the next one starts from there. The 4th swing is the family's ender, picked by the input of that 4th press.
+
+| Family | Opener | Next swing, blade on her right | Next swing, blade on her left | 4th hit (ender) |
+|---|---|---|---|---|
+| Horizontal | Horizontal (forehand) | Horizontal | Reverse horizontal (backhand) | Spin: one full-turn cut |
+| Reverse | Reverse horizontal | Horizontal | Reverse horizontal | Rising: diagonal cut up and through, with a hop |
+| Vertical | Vertical `/` | Vertical `/` | Vertical left `\` | Cleave: leaping two-handed overhead, lands on one knee |
+| Thrust | Thrust (right hip) | Thrust | Thrust left (across the left hip) | Lunge: long driving stab |
+
+So neutral x4 is forehand, backhand, forehand, spin. Forward x4 is `/`, `\`, `/`, cleave. Mixed inputs flow the same way: a forehand ends on her left, so Forward next gives `\` from the left shoulder. Enders have `comboOpen: Infinity`, so a press during one starts a fresh combo once it ends. Letting any swing finish resets the count. `test/combo.test.ts` covers all of it, and `test/slashDirection.test.ts` checks each animation ends on the side its `endSide` claims.
 
 ---
 

@@ -1,5 +1,6 @@
 import { ATTACKS, attackDuration, AttackId, EVADES, EvadeId, type AttackDef } from '../combat/moves';
 import { DEFAULT_TUNING } from '../player/contracts';
+import { onGround } from './fk';
 import type { BoneId } from './rig';
 
 /*
@@ -20,6 +21,8 @@ export interface Pose {
   bones: Partial<Record<BoneId, Euler>>;
   /** Extra hips height (meters): crouches and bobs. */
   hipsY?: number;
+  /** Hips moved forward (meters, + = her forward). Lets a roll turn about its middle, not the hips. */
+  hipsZ?: number;
 }
 
 export interface ClipDef {
@@ -47,21 +50,44 @@ const READY: Pose = {
   },
 };
 
-const GUARD: Pose = {
-  hipsY: -0.06,
+/**
+ * Lock-on stance (strafing): two-handed, blade forward and up at the target's eyes.
+ * Deliberately unlike GUARD, so moving while locked on never reads as blocking.
+ */
+const STANCE: Pose = {
+  hipsY: -0.05,
   bones: {
     spine: [-5, 0, 0],
-    shoulderR: [0, 25, 0],
-    upperArmR: [55, 0, 10],
-    forearmR: [65, 0, 0],
-    handR: [-55, 0, 0], // blade up and forward, across her front
-    shoulderL: [0, -30, 0],
-    upperArmL: [50, 0, 0],
-    forearmL: [75, 0, 0],
-    thighL: [18, 0, 0],
-    shinL: [-28, 0, 0],
-    thighR: [5, 0, 0],
-    shinR: [-25, 0, 0],
+    upperArmR: [35, 0, -12],
+    forearmR: [55, 0, 0],
+    handR: [-65, 0, 0], // both hands on the grip at the navel, tip about 20 degrees up
+    upperArmL: [30, 0, 30],
+    forearmL: [60, 0, 0],
+    thighL: [12, 0, 0],
+    shinL: [-20, 0, 0],
+    thighR: [-5, 0, 0],
+    shinR: [-18, 0, 0],
+  },
+};
+
+/**
+ * Block: high horizontal guard. Blade level across her front just above her head, tip to
+ * her left, the left palm braced under the blade. Low, wide stance.
+ */
+const GUARD: Pose = {
+  hipsY: -0.1,
+  bones: {
+    spine: [4, 0, 0],
+    neck: [-6, 0, 0],
+    upperArmR: [118, 0, 30],
+    forearmR: [75, 0, 0],
+    handR: [10, 75, 0],
+    upperArmL: [112, 0, 20],
+    forearmL: [60, 0, 0],
+    thighL: [22, 0, -6],
+    shinL: [-35, 0, 0],
+    thighR: [-8, 0, 8],
+    shinR: [-30, 0, 0],
   },
 };
 
@@ -197,6 +223,250 @@ const CLASH = (shoulderYaw: number, armPitch: number): Pose => ({
   },
 });
 
+// ------------------------------------------------------ combo swing poses
+// Tuned with forward kinematics: hand and blade-tip positions are noted where it matters.
+
+/** "/" wound up: hand above the right shoulder, blade upright and tipped back. */
+const DIAG_R_WINDUP: Pose = onGround({
+  bones: {
+    chest: [8, -30, 0],
+    shoulderR: [0, -15, 0],
+    upperArmR: [155, 0, 30],
+    forearmR: [40, 0, 0],
+    handR: [-80, 0, 0],
+    upperArmL: [40, 0, -20],
+    forearmL: [50, 0, 0],
+    thighL: [15, 0, 0],
+    shinL: [-20, 0, 0],
+    thighR: [-8, 0, 0],
+    shinR: [-20, 0, 0],
+  },
+});
+
+/** "/" finished: hand by the left hip, blade down and forward to her left. Right foot steps in. */
+const DIAG_R_STRIKE: Pose = onGround({
+  bones: {
+    spine: [-15, 10, 0],
+    chest: [-5, 15, 0],
+    shoulderR: [0, 25, 0],
+    upperArmR: [50, 0, -5],
+    forearmR: [10, 0, 0],
+    handR: [-88, 0, 0],
+    upperArmL: [-15, 0, -30],
+    forearmL: [20, 0, 0],
+    thighR: [30, 0, 0],
+    shinR: [-25, 0, 0],
+    thighL: [-15, 0, 0],
+    shinL: [-20, 0, 0],
+  },
+});
+
+/** "\" wound up: right hand crossed over above the left shoulder, blade upright. */
+const DIAG_L_WINDUP: Pose = onGround({
+  bones: {
+    chest: [8, 30, 0],
+    shoulderR: [0, 80, 0],
+    upperArmR: [130, 0, 0],
+    forearmR: [40, 0, 0],
+    handR: [-100, 0, 0],
+    upperArmL: [30, 0, -35],
+    forearmL: [40, 0, 0],
+    thighR: [15, 0, 0],
+    shinR: [-20, 0, 0],
+    thighL: [-8, 0, 0],
+    shinL: [-20, 0, 0],
+  },
+});
+
+/** "\" finished: hand by the right hip, blade down and forward to her right. Left foot steps in. */
+const DIAG_L_STRIKE: Pose = onGround({
+  bones: {
+    spine: [-15, -5, 0],
+    chest: [-5, -10, 0],
+    shoulderR: [0, -5, 0],
+    upperArmR: [40, 0, 35],
+    forearmR: [10, 0, 0],
+    handR: [-85, 0, 0],
+    upperArmL: [-10, 0, -25],
+    forearmL: [20, 0, 0],
+    thighL: [30, 0, 0],
+    shinL: [-25, 0, 0],
+    thighR: [-15, 0, 0],
+    shinR: [-20, 0, 0],
+  },
+});
+
+const THRUST_WINDUP: Pose = {
+  hipsY: -0.06,
+  bones: {
+    chest: [0, -25, 0],
+    upperArmR: [20, 0, 10],
+    forearmR: [100, 0, 0],
+    handR: [-120, 0, 0], // pulled back at her right side, blade level
+    upperArmL: [40, 0, -20],
+    forearmL: [40, 0, 0],
+    thighL: [10, 0, 0],
+    shinL: [-20, 0, 0],
+  },
+};
+
+const THRUST_STRIKE: Pose = {
+  hipsY: -0.1,
+  bones: {
+    spine: [-15, 0, 0],
+    chest: [0, 15, 0],
+    upperArmR: [85, 0, 0],
+    forearmR: [0, 0, 0],
+    handR: [-85, 0, 0], // arm and blade fully extended
+    upperArmL: [-25, 0, -25],
+    thighR: [40, 0, 0],
+    shinR: [-35, 0, 0],
+    thighL: [-25, 0, 0],
+    shinL: [-15, 0, 0],
+  },
+};
+
+/** Second thrust: blade drawn back across her left hip, torso wound to the left. */
+const THRUST_L_WINDUP: Pose = onGround({
+  bones: {
+    chest: [0, 40, 0],
+    shoulderR: [0, 45, 0],
+    upperArmR: [10, 0, -10],
+    forearmR: [95, 0, 0],
+    handR: [-105, 0, 0],
+    upperArmL: [30, 0, -30],
+    forearmL: [40, 0, 0],
+    thighR: [10, 0, 0],
+    shinR: [-20, 0, 0],
+  },
+});
+
+/** ...unwinding into a stab off the left foot. */
+const THRUST_L_STRIKE: Pose = onGround({
+  bones: {
+    spine: [-15, 0, 0],
+    chest: [0, -20, 0],
+    shoulderR: [0, 5, 0],
+    upperArmR: [85, 0, 0],
+    forearmR: [0, 0, 0],
+    handR: [-72, 0, 0],
+    upperArmL: [-25, 0, -35],
+    forearmL: [10, 0, 0],
+    thighL: [40, 0, 0],
+    shinL: [-35, 0, 0],
+    thighR: [-25, 0, 0],
+    shinR: [-15, 0, 0],
+  },
+});
+
+/** Rising ender wound up: crouched, blade low behind her on the left. */
+const RISING_WINDUP: Pose = onGround({
+  bones: {
+    spine: [-20, 10, 0],
+    chest: [0, 30, 0],
+    shoulderR: [0, 40, 0],
+    upperArmR: [-10, 0, -40],
+    forearmR: [30, 0, 0],
+    handR: [-120, 0, 0],
+    upperArmL: [20, 0, -30],
+    forearmL: [40, 0, 0],
+    thighL: [45, 0, 0],
+    shinL: [-60, 0, 0],
+    thighR: [-10, 0, 0],
+    shinR: [-50, 0, 0],
+  },
+});
+
+/** ...cut up through to high on her right, body stretched, knee up off the hop. */
+const RISING_STRIKE: Pose = onGround({
+  bones: {
+    spine: [10, -10, 0],
+    chest: [5, -15, 0],
+    shoulderR: [0, -20, 0],
+    upperArmR: [150, 0, 30],
+    forearmR: [10, 0, 0],
+    handR: [-110, 0, 0],
+    upperArmL: [10, 0, -45],
+    forearmL: [30, 0, 0],
+    thighL: [70, 0, 0],
+    shinL: [-90, 0, 0],
+    thighR: [-10, 0, 0],
+    shinR: [-10, 0, 0],
+  },
+});
+
+/** Leaping cleave, mid-air: arched back, both hands far behind her head, knees drawn up. */
+const CLEAVE_AIR: Pose = {
+  hipsY: 0,
+  bones: {
+    spine: [20, 0, 0],
+    chest: [10, 0, 0],
+    upperArmR: [175, 0, -5],
+    forearmR: [35, 0, 0],
+    handR: [10, 0, 0],
+    shoulderL: [0, -15, 0],
+    upperArmL: [170, 0, 12],
+    forearmL: [35, 0, 0],
+    thighL: [70, 0, 0],
+    shinL: [-90, 0, 0],
+    thighR: [40, 0, 0],
+    shinR: [-100, 0, 0],
+  },
+};
+
+/** Leaping cleave, landed: down on the right knee, blade driven to the floor two-handed. */
+const CLEAVE_KNEEL: Pose = onGround({
+  bones: {
+    ...CHOP(0, true).bones,
+    spine: [-25, 0, 0],
+    chest: [-8, 0, 0],
+    upperArmR: [55, 0, 5],
+    handR: [-35, 0, 0], // tip just off the floor in front of her
+    upperArmL: [55, 0, 15],
+    thighL: [92, 0, 0],
+    shinL: [-92, 0, 0],
+    thighR: [-10, 0, 0],
+    shinR: [-80, 0, 0], // shin flat behind her, knee on the floor
+    footR: [-75, 0, 0], // foot in line with the shin, toes curled under
+  },
+});
+
+/** Lunge ender wound up: blade chambered at the right hip, weight sunk on the back leg. */
+const LUNGE_WINDUP: Pose = onGround({
+  bones: {
+    spine: [5, 0, 0],
+    chest: [0, -20, 0],
+    shoulderR: [0, 0, 0],
+    upperArmR: [15, 0, 15],
+    forearmR: [100, 0, 0],
+    handR: [-115, 0, 0],
+    upperArmL: [40, 0, -20],
+    forearmL: [60, 0, 0],
+    thighL: [20, 0, 0],
+    shinL: [-20, 0, 0],
+    thighR: [-20, 0, 0],
+    shinR: [-35, 0, 0],
+  },
+});
+
+/** ...full-length lunge: front knee over the toes, back leg straight, arm and blade level. */
+const LUNGE_STRIKE: Pose = onGround({
+  bones: {
+    spine: [-25, 0, 0],
+    chest: [0, 0, 0],
+    upperArmR: [90, 0, 0],
+    forearmR: [0, 0, 0],
+    handR: [-65, 0, 0], // spine leans 25 forward, so this holds the blade level
+    upperArmL: [-40, 0, -30],
+    forearmL: [10, 0, 0],
+    thighL: [55, 0, 0],
+    shinL: [-55, 0, 0],
+    thighR: [-38, 0, 0],
+    shinR: [-5, 0, 0],
+    footR: [25, 0, 0], // back heel up, ball of the foot down
+  },
+});
+
 // ----------------------------------------------------------------- helpers
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
@@ -212,7 +482,8 @@ function lerpPose(a: Pose, b: Pose, k: number): Pose {
     const y = b.bones[id] ?? [0, 0, 0];
     bones[id] = [x[0] + (y[0] - x[0]) * k, x[1] + (y[1] - x[1]) * k, x[2] + (y[2] - x[2]) * k];
   }
-  return { bones, hipsY: (a.hipsY ?? 0) + ((b.hipsY ?? 0) - (a.hipsY ?? 0)) * k };
+  const mix = (x = 0, y = 0) => x + (y - x) * k;
+  return { bones, hipsY: mix(a.hipsY, b.hipsY), hipsZ: mix(a.hipsZ, b.hipsZ) };
 }
 
 /** Piecewise blend through [time, pose] keys with ease in/out between each pair. */
@@ -261,43 +532,65 @@ function attackClip(def: AttackDef, windup: Pose, strike: Pose): ClipDef {
 const A = ATTACKS;
 const E = EVADES;
 
+/**
+ * Spinning ender: coils to her right, then one full turn to the left with the blade held
+ * wide and low, finishing in a deep follow-through. Faster and lower than the charged spin.
+ */
+function finisherSpinClip(): ClipDef {
+  const d = A[AttackId.FinisherSpin];
+  const low = { thighL: [40, 0, -8] as Euler, shinL: [-45, 0, 0] as Euler, thighR: [-15, 0, 12] as Euler, shinR: [-40, 0, 0] as Euler };
+  const coil = onGround(armOut(-70, -45, low));
+  const out = onGround(armOut(-85, 0, low));
+  const follow = onGround(armOut(55, 40, low));
+  const end = d.startup + d.active;
+  const base = keyed([
+    [0, coil],
+    [d.startup, out],
+    [end, out],
+    [end + 0.08, follow],
+    [end + d.recovery * 0.5, follow],
+    [attackDuration(d), READY],
+  ]);
+  return {
+    name: d.anim,
+    duration: attackDuration(d),
+    loop: false,
+    // Hips turn -40 (coiled right) to +360 (a full turn left, back to facing forward).
+    sample: (t) => withHips(base(t), [0, -40 + 400 * span(t, d.startup * 0.6, end + 0.06), 0]),
+  };
+}
+
 const attackClips: ClipDef[] = [
   // Forehand: blade sweeps from her right to her left.
   attackClip(A[AttackId.Horizontal], armOut(-60, -35), armOut(55, 40, { thighR: [25, 0, 0], shinR: [-20, 0, 0] })),
   // Backhand: left to right.
   attackClip(A[AttackId.ReverseHorizontal], armOut(70, 35), armOut(-60, -40, { thighR: [25, 0, 0], shinR: [-20, 0, 0] })),
-  attackClip(A[AttackId.Vertical], OVERHEAD(-0.04, false), CHOP(-0.1, false)),
-  attackClip(
-    A[AttackId.Thrust],
-    {
-      hipsY: -0.06,
-      bones: {
-        chest: [0, -25, 0],
-        upperArmR: [20, 0, 10],
-        forearmR: [100, 0, 0],
-        handR: [-120, 0, 0], // pulled back at her side, blade level
-        upperArmL: [40, 0, -20],
-        forearmL: [40, 0, 0],
-        thighL: [10, 0, 0],
-        shinL: [-20, 0, 0],
-      },
-    },
-    {
-      hipsY: -0.1,
-      bones: {
-        spine: [-15, 0, 0],
-        chest: [0, 15, 0],
-        upperArmR: [85, 0, 0],
-        forearmR: [0, 0, 0],
-        handR: [-85, 0, 0], // arm and blade fully extended
-        upperArmL: [-25, 0, -25],
-        thighR: [40, 0, 0],
-        shinR: [-35, 0, 0],
-        thighL: [-25, 0, 0],
-        shinL: [-15, 0, 0],
-      },
-    },
-  ),
+  // Diagonals: "/" from over the right shoulder, "\" from over the left. A vertical combo alternates them.
+  attackClip(A[AttackId.Vertical], DIAG_R_WINDUP, DIAG_R_STRIKE),
+  attackClip(A[AttackId.VerticalLeft], DIAG_L_WINDUP, DIAG_L_STRIKE),
+  attackClip(A[AttackId.Thrust], THRUST_WINDUP, THRUST_STRIKE),
+  attackClip(A[AttackId.ThrustLeft], THRUST_L_WINDUP, THRUST_L_STRIKE),
+  // Combo enders.
+  finisherSpinClip(),
+  attackClip(A[AttackId.FinisherRising], RISING_WINDUP, RISING_STRIKE),
+  {
+    name: A[AttackId.FinisherCleave].anim,
+    duration: attackDuration(A[AttackId.FinisherCleave]),
+    loop: false,
+    sample: (() => {
+      const d = A[AttackId.FinisherCleave];
+      const strike = d.startup + d.active;
+      return keyed([
+        [0, onGround(OVERHEAD(-0.15, true))],
+        [d.startup * 0.45, CLEAVE_AIR],
+        [d.startup, { ...CLEAVE_AIR, bones: { ...CLEAVE_AIR.bones, thighR: [60, 0, 0], shinR: [-60, 0, 0] } }],
+        [strike, CLEAVE_KNEEL],
+        [strike + d.recovery * 0.55, CLEAVE_KNEEL],
+        [attackDuration(d), READY],
+      ]);
+    })(),
+  },
+  attackClip(A[AttackId.FinisherLunge], LUNGE_WINDUP, LUNGE_STRIKE),
   attackClip(A[AttackId.Overpower], OVERHEAD(-0.12, true), CHOP(-0.2, true)),
   {
     name: A[AttackId.Spin].anim,
@@ -364,9 +657,111 @@ function flipClip(name: string, duration: number, rot: Euler, shape: Pose, t0: n
   };
 }
 
+// ------------------------------------------------------------- ground roll
+
+/** Sword hand for the roll: blade turned out to her right, along the roll's axis, so it never digs in. */
+const ROLL_SWORD = { upperArmR: [50, 0, 0] as Euler, forearmR: [70, 0, 0] as Euler, handR: [0, -90, 0] as Euler };
+
+/** Dropping into the roll: deep crouch, chest over the knees, left hand reaching for the floor. */
+const ROLL_DIVE: Pose = {
+  bones: {
+    spine: [-45, 0, 0],
+    chest: [-10, 0, 0],
+    neck: [-20, 0, 0],
+    ...ROLL_SWORD,
+    upperArmL: [70, 0, -10],
+    forearmL: [20, 0, 0],
+    thighL: [75, 0, 0],
+    shinL: [-95, 0, 0],
+    thighR: [60, 0, 0],
+    shinR: [-100, 0, 0],
+  },
+};
+
+/** Balled up: chin in, knees to the chest, left arm hugging the shins. */
+const ROLL_TUCK: Pose = {
+  bones: {
+    spine: [-45, 0, 0],
+    chest: [-35, 0, 0],
+    neck: [-45, 0, 0],
+    head: [-30, 0, 0],
+    ...ROLL_SWORD,
+    upperArmL: [70, 0, -5],
+    forearmL: [60, 0, 0],
+    thighL: [115, 0, 0],
+    shinL: [-140, 0, 0],
+    thighR: [115, 0, 0],
+    shinR: [-140, 0, 0],
+  },
+};
+
+/** Coming up onto the feet, still low. */
+const ROLL_RISE: Pose = {
+  bones: {
+    spine: [-30, 0, 0],
+    chest: [-5, 0, 0],
+    ...ROLL_SWORD,
+    upperArmL: [45, 0, -15],
+    forearmL: [30, 0, 0],
+    thighL: [85, 0, 0],
+    shinL: [-115, 0, 0],
+    thighR: [70, 0, 0],
+    shinR: [-120, 0, 0],
+  },
+};
+
+/** Out of the roll leaning into a run, sword back in the ready grip. */
+const ROLL_EXIT: Pose = {
+  bones: {
+    ...READY.bones,
+    spine: [-15, 0, 0],
+    thighL: [25, 0, 0],
+    shinL: [-35, 0, 0],
+    thighR: [-10, 0, 0],
+    shinR: [-40, 0, 0],
+  },
+};
+
+/** Center of the tuck in hips space (meters up, forward). The roll turns about this point. */
+const ROLL_CENTER = { up: 0.27, forward: 0 };
+
+/**
+ * Forward roll along the ground: dive, one full turn balled up, then up onto the feet.
+ * Two things make it a roll and not a flip in the air: it turns about the middle of the
+ * tucked body (hipsZ shifts the hips around that point), and every frame is placed so
+ * the lowest part of the body touches the floor. The motor supplies the travel; at roll
+ * speed, one turn covers about the tuck's circumference, so she doesn't skid.
+ */
+function rollClip(): ClipDef {
+  const d = E[EvadeId.Roll];
+  const t0 = 0.06; // start turning
+  const t1 = 0.38; // back on the feet
+  const ease = 0.07; // blend between the shapes at each end of the turn
+  return {
+    name: d.anim,
+    duration: d.duration,
+    loop: false,
+    sample: (t) => {
+      let shape: Pose;
+      if (t < t0) shape = lerpPose(ROLL_EXIT, ROLL_DIVE, smooth(t / t0));
+      else if (t < t1) shape = lerpPose(lerpPose(ROLL_DIVE, ROLL_TUCK, span(t, t0, t0 + ease)), ROLL_RISE, span(t, t1 - ease, t1));
+      else shape = lerpPose(ROLL_RISE, ROLL_EXIT, span(t, t1, d.duration));
+
+      // Mostly steady spin, softened at both ends.
+      const k = clamp01((t - t0) / (t1 - t0));
+      const turn = 360 * (0.6 * k + 0.4 * smooth(k));
+      const a = turn * (Math.PI / 180);
+      const c = ROLL_CENTER;
+      // Where the center would go if the body turned about the hips, undone by moving the hips.
+      const hipsZ = c.forward - (c.up * Math.sin(a) + c.forward * Math.cos(a));
+      return onGround({ ...withHips(shape, [-turn, 0, 0]), hipsZ }, 0.04);
+    },
+  };
+}
+
 const PD = DEFAULT_TUNING.perfectDodgeDuration;
 const evadeClips: ClipDef[] = [
-  flipClip(E[EvadeId.Roll].anim, E[EvadeId.Roll].duration, [-360, 0, 0], TUCK, 0.04, 0.42, -0.4),
+  rollClip(),
   flipClip(E[EvadeId.Backflip].anim, E[EvadeId.Backflip].duration, [360, 0, 0], TUCK, 0.06, 0.46),
   flipClip(E[EvadeId.SideHopLeft].anim, E[EvadeId.SideHopLeft].duration, [0, 0, 0], withHips(lerpPose(READY, TUCK, 0.35), [0, 0, 15]), 0, 0.36),
   flipClip(E[EvadeId.SideHopRight].anim, E[EvadeId.SideHopRight].duration, [0, 0, 0], withHips(lerpPose(READY, TUCK, 0.35), [0, 0, -15]), 0, 0.36),
@@ -422,11 +817,11 @@ const reactionClips: ClipDef[] = [
 const RUN_PERIOD = 0.66; // two steps at full run speed
 const STRAFE_PERIOD = 0.7;
 
-function gait(period: number, stride: number, lean: number, arms: 'swing' | 'guard') {
+function gait(period: number, stride: number, lean: number, arms: 'swing' | 'stance') {
   return (t: number): Pose => {
     const p = (t / period) * Math.PI * 2;
     const s = Math.sin(p);
-    const base = arms === 'guard' ? GUARD : READY;
+    const base = arms === 'stance' ? STANCE : READY;
     return {
       hipsY: -0.05 + 0.035 * Math.abs(Math.cos(p)),
       bones: {
@@ -457,11 +852,11 @@ function sideStep(dir: 1 | -1) {
     return {
       hipsY: -0.07 + 0.025 * Math.abs(Math.cos(p)),
       bones: {
-        ...GUARD.bones,
+        ...STANCE.bones,
         thighR: [10, 0, dir * 22 * open],
-        shinR: [-25, 0, 0],
+        shinR: [-22, 0, 0],
         thighL: [10, 0, dir * 12 * (1 - open)],
-        shinL: [-25, 0, 0],
+        shinL: [-22, 0, 0],
       },
     };
   };
@@ -470,8 +865,8 @@ function sideStep(dir: 1 | -1) {
 export const LOCOMOTION_CLIPS = {
   idle: { name: 'loco_idle', duration: 2, loop: true, sample: (t: number) => ({ ...READY, bones: { ...READY.bones, chest: [2 * Math.sin((t / 2) * Math.PI * 2), 0, 0] as Euler } }) },
   run: { name: 'loco_run', duration: RUN_PERIOD, loop: true, sample: gait(RUN_PERIOD, 40, -12, 'swing') },
-  strafeF: { name: 'loco_strafe_f', duration: STRAFE_PERIOD, loop: true, sample: gait(STRAFE_PERIOD, 25, -6, 'guard') },
-  strafeB: { name: 'loco_strafe_b', duration: STRAFE_PERIOD, loop: true, sample: (t: number) => gait(STRAFE_PERIOD, 20, 0, 'guard')(STRAFE_PERIOD - t) },
+  strafeF: { name: 'loco_strafe_f', duration: STRAFE_PERIOD, loop: true, sample: gait(STRAFE_PERIOD, 25, -6, 'stance') },
+  strafeB: { name: 'loco_strafe_b', duration: STRAFE_PERIOD, loop: true, sample: (t: number) => gait(STRAFE_PERIOD, 20, 0, 'stance')(STRAFE_PERIOD - t) },
   strafeL: { name: 'loco_strafe_l', duration: STRAFE_PERIOD, loop: true, sample: sideStep(-1) },
   strafeR: { name: 'loco_strafe_r', duration: STRAFE_PERIOD, loop: true, sample: sideStep(1) },
 } satisfies Record<string, ClipDef>;

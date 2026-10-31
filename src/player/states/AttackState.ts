@@ -93,7 +93,8 @@ export class AttackState implements PlayerState {
     const canCombo = this.t >= def.comboOpen && this.combo + 1 < tuning.maxCombo;
     const canEvade = this.t >= def.evadeCancel;
     if (canCombo || canEvade) {
-      const intent = readIntent(ctx, { allowAttack: canCombo, allowEvade: canEvade, comboFrom: def.id });
+      const combo = { from: def.id, step: this.combo + 1 };
+      const intent = readIntent(ctx, { allowAttack: canCombo, allowEvade: canEvade, combo });
       const next = commitIntent(ctx, intent, intent.kind === 'attack' ? this.combo + 1 : 0);
       if (next) return next;
     }

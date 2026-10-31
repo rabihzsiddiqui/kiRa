@@ -27,6 +27,20 @@ export class PlayerView {
   private readonly hairSegments: THREE.Mesh[] = [];
   private readonly hairJoints: THREE.Mesh[] = [];
   private readonly dissolveMats: THREE.MeshStandardMaterial[];
+  private readonly scratch = {
+    q: new THREE.Quaternion(),
+    v: new THREE.Vector3(),
+    a: new THREE.Vector3(),
+    b: new THREE.Vector3(),
+    d: new THREE.Vector3(),
+    socket: { x: 0, y: 0, z: 0 },
+    frame: { right: { x: 1, y: 0, z: 0 }, up: { x: 0, y: 1, z: 0 }, back: { x: 0, y: 0, z: 1 } } as HeadFrame,
+    colliders: [
+      { center: { x: 0, y: 0, z: 0 }, radius: 0.115 },
+      { center: { x: 0, y: 0, z: 0 }, radius: 0.06 },
+      { center: { x: 0, y: 0, z: 0 }, radius: 0.15 },
+    ] as Sphere[],
+  };
 
   constructor(animator: ThreeAnimator) {
     this.figure = buildFigure();
@@ -66,34 +80,32 @@ export class PlayerView {
 
   /** Step the ponytail. `dt` is PLAYER-scaled, so her hair slows with her. Call after sync(). */
   updateHair(dt: number): void {
+    // Runs every display frame: reuse scratch objects so it makes no garbage.
     const { bones } = this.figure;
     const head = bones.head;
-    const q = head.getWorldQuaternion(new THREE.Quaternion());
-    const frame: HeadFrame = {
-      right: vec(new THREE.Vector3(1, 0, 0).applyQuaternion(q)),
-      up: vec(new THREE.Vector3(0, 1, 0).applyQuaternion(q)),
-      back: vec(new THREE.Vector3(0, 0, 1).applyQuaternion(q)),
-    };
-    const socket = vec(head.localToWorld(new THREE.Vector3(...PONYTAIL_SOCKET)));
-    const colliders: Sphere[] = [
-      { center: vec(head.localToWorld(new THREE.Vector3(0, 0.11, 0))), radius: 0.115 },
-      { center: vec(bones.neck.localToWorld(new THREE.Vector3(0, 0.04, 0))), radius: 0.06 },
-      { center: vec(bones.chest.localToWorld(new THREE.Vector3(0, 0.12, 0.05))), radius: 0.15 },
-    ];
-    this.ponytail.update(dt, socket, frame, colliders);
+    const s = this.scratch;
+    head.getWorldQuaternion(s.q);
+    const frame = s.frame;
+    copy(frame.right, s.v.set(1, 0, 0).applyQuaternion(s.q));
+    copy(frame.up, s.v.set(0, 1, 0).applyQuaternion(s.q));
+    copy(frame.back, s.v.set(0, 0, 1).applyQuaternion(s.q));
+    copy(s.socket, head.localToWorld(s.v.set(...PONYTAIL_SOCKET)));
+    copy(s.colliders[0].center, head.localToWorld(s.v.set(0, 0.11, 0)));
+    copy(s.colliders[1].center, bones.neck.localToWorld(s.v.set(0, 0.04, 0)));
+    copy(s.colliders[2].center, bones.chest.localToWorld(s.v.set(0, 0.12, 0.05)));
+    this.ponytail.update(dt, s.socket, frame, s.colliders);
 
     const p = this.ponytail.points;
-    const up = new THREE.Vector3(0, 1, 0);
-    const a = new THREE.Vector3();
-    const b = new THREE.Vector3();
+    const { a, b, d } = s;
     for (let i = 0; i < this.hairSegments.length; i++) {
       a.set(p[i].x, p[i].y, p[i].z);
       b.set(p[i + 1].x, p[i + 1].y, p[i + 1].z);
       const seg = this.hairSegments[i];
-      const d = b.clone().sub(a);
+      d.subVectors(b, a);
+      const len = d.length();
       seg.position.copy(a);
-      seg.quaternion.setFromUnitVectors(up, d.clone().normalize());
-      seg.scale.y = d.length();
+      if (len > 1e-6) seg.quaternion.setFromUnitVectors(UP, d.divideScalar(len));
+      seg.scale.y = len;
       this.hairJoints[i].position.copy(b);
     }
   }
@@ -120,4 +132,10 @@ export class PlayerView {
   }
 }
 
-const vec = (v: THREE.Vector3) => ({ x: v.x, y: v.y, z: v.z });
+const UP = new THREE.Vector3(0, 1, 0);
+
+function copy(out: { x: number; y: number; z: number }, v: THREE.Vector3): void {
+  out.x = v.x;
+  out.y = v.y;
+  out.z = v.z;
+}

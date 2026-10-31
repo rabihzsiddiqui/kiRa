@@ -152,7 +152,9 @@ async function boot(): Promise<void> {
     if (steps === MAX_STEPS_PER_FRAME) accumulator = 0;
 
     // Render between the last two sim states, so motion is smooth at any refresh rate.
-    const pose = game.interpolated(accumulator / SIM_DT);
+    const alpha = accumulator / SIM_DT;
+    const pose = game.interpolated(alpha);
+    game.animator.render(alpha); // her pose at the same in-between moment as her position
     playerView.sync(pose.pos.x, pose.pos.y, pose.pos.z, pose.yaw);
     const d = game.dummy;
     const worldDt = game.worldTime - lastWorldTime;
@@ -174,7 +176,9 @@ async function boot(): Promise<void> {
       { position: game.motor.position, radius: game.combat.playerHurtRadius, kind: game.player.inPerfectDodgeWindow ? 'graze' : 'player' },
       ...game.enemies.map((e) => ({ position: e.position, radius: e.radius, kind: 'enemy' as const })),
     ]);
-    const subject = { position: planarFrom3(pose.pos), height: pose.pos.y, facing: game.motor.facing };
+    // Facing from the interpolated yaw (inverse of yawFromFacing), so recentering is smooth too.
+    const facing = { x: -Math.sin(pose.yaw), y: Math.cos(pose.yaw) };
+    const subject = { position: planarFrom3(pose.pos), height: pose.pos.y, facing };
     cameraView.apply(rig.update(realDt, devices.look(realDt), subject)); // camera on real time
 
     // Paused: effects freeze too (a true freeze frame), the camera still orbits.

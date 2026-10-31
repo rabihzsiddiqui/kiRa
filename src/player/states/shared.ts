@@ -30,6 +30,7 @@ export function readIntent(ctx: PlayerContext, opts: ResolveOptions): Intent {
       grounded: ctx.motor.grounded,
       dirDeadzone: ctx.tuning.dirDeadzone,
       untargetedFrame: ctx.tuning.untargetedFrame,
+      maxCombo: ctx.tuning.maxCombo,
     },
     opts,
   );

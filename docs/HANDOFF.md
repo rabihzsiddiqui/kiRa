@@ -1,6 +1,6 @@
 # Handoff: what to build next
 
-The gameplay core is done and tested: input buffer, intent resolver, player FSM, hit resolution, perfect dodge/block, time scaling, targeting, and a reference motor. `npm run check` passes 102 tests.
+The gameplay core is done and tested: input buffer, intent resolver, player FSM, hit resolution, perfect dodge/block, time scaling, targeting, and a reference motor. `npm run check` passes 114 tests.
 
 Phases 1 to 7 are done. `npm run dev` runs the browser sandbox.
 
@@ -156,7 +156,12 @@ Dark, minimal overlay (indigo/cyan accents):
 - Perfect window bars are not eased, so you can see how short 9 frames is. `mash` on the block row means the anti-mash lockout ate the window.
 - Toggles: `V` / d-pad down hit areas, `N` / left stick click slow-mo, `I` / right stick click infinite perfect window. Slow-mo off (`CombatFeel.slowmo`) skips the perfect dodge, perfect block and counter slow-mo but keeps hit stops and every cue. Infinite perfect (`PlayerController.infinitePerfectWindows`) makes every evade and guard perfect, and puts the tuned windows back when turned off.
 
-### Movement notes
+### Movement and animation notes
+- Running stutter fix: the animation mixer now advances at render time to the same in-between moment the renderer draws her position at (`ThreeAnimator` deferred mode, `render(alpha)` from `main.ts`). Before, a display frame that landed on 0 sim steps froze her pose and the next one jumped two. The camera also reads her interpolated facing, and the ponytail update makes no garbage per frame.
+- Lock-on strafing uses its own stance (`STANCE` in `clips.ts`: two hands, blade at the target's eyes). Blocking is a high horizontal guard (`GUARD`: blade level above her head, left palm under it). They no longer share arm poses.
+- The roll is a ground roll: dive, one turn balled up about the middle of the tuck (`hipsZ` moves the hips around that point), then up onto the feet. Each frame is placed on the floor by `src/character/fk.ts`, a small engine-free forward kinematics helper (`onGround`, `lowestPoint`). The sword turns out to her right, along the roll's axis, so it never digs into the floor. Tested in `test/character.test.ts`.
+- `onGround()` also places the kneeling cleave, the lunge and the new combo poses, so their feet sit on the floor. Older poses still sink about 5 cm because feet tilt with the knees (no ankle posing yet); worth a pass when real animations arrive.
+- Combo system: see ARCHITECTURE.md §4 "Combos". New swings: vertical left (`\`), thrust left, and four enders (spin, rising, cleave, lunge). Enders get a 0.06 s hit stop (`finisherHitStop`).
 - The traversal roll (any roll, since rolls only happen unlocked) eases into the run speed the stick is asking for instead of stopping, so rolling while running keeps her momentum. With the stick released it still eases to a stop. Side hops and backflips (locked on) still stop so landings don't skate.
 
 ---

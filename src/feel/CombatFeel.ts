@@ -2,7 +2,7 @@ import type { EventBus } from '../core/EventBus';
 import type { TimeController, TimeRequest } from '../core/TimeController';
 import type { Vec2 } from '../core/math';
 import type { CombatEvents } from '../combat/CombatWorld';
-import { AttackId } from '../combat/moves';
+import { AttackId, COMBO } from '../combat/moves';
 import type { PlayerEvents } from '../player/contracts';
 
 /**
@@ -50,6 +50,8 @@ export interface FeelTuning {
   hitStop: number;
   /** Phantom Dash and Overpower landing: the iaido beat. */
   counterHitStop: number;
+  /** A combo ender landing: heavier than a normal hit, lighter than a counter. */
+  finisherHitStop: number;
   /** Any hit that breaks posture. */
   breakHitStop: number;
 }
@@ -63,10 +65,12 @@ export const DEFAULT_FEEL: FeelTuning = {
   hurtHitStop: 0.06,
   hitStop: 0.035,
   counterHitStop: 0.09,
+  finisherHitStop: 0.06,
   breakHitStop: 0.12,
 };
 
 const isCounter = (a: AttackId) => a === AttackId.PhantomDash || a === AttackId.Overpower;
+const isFinisher = (a: AttackId) => Object.values(COMBO).some((f) => f.finisher === a);
 
 export class CombatFeel {
   private unsubs: Array<() => void> = [];
@@ -131,7 +135,12 @@ export class CombatFeel {
     this.unsubs.push(
       combat.on('enemyHit', ({ enemy, attack, broke }) => {
         const t = this.tuning;
-        this.time.hitStop(broke ? t.breakHitStop : isCounter(attack) ? t.counterHitStop : t.hitStop);
+        this.time.hitStop(
+          broke ? t.breakHitStop
+          : isCounter(attack) ? t.counterHitStop
+          : isFinisher(attack) ? t.finisherHitStop
+          : t.hitStop,
+        );
         this.fx.cue('hit', { at: { ...enemy.position }, attack, broke });
       }),
     );

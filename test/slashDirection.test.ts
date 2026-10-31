@@ -37,3 +37,26 @@ test('horizontal (left + attack) sweeps the blade from her right to her left', (
   assert.ok(bladeTipX(AttackId.Horizontal, 'start') > 0.3);
   assert.ok(bladeTipX(AttackId.Horizontal, 'end') < -0.3);
 });
+
+test('every slash ends on the side its data says, so combos flow from the right place', () => {
+  // Thrusts end near the middle, so only the cutting swings are checked against the blade.
+  const slashes = [
+    AttackId.Horizontal,
+    AttackId.ReverseHorizontal,
+    AttackId.Vertical,
+    AttackId.VerticalLeft,
+    AttackId.FinisherRising,
+  ];
+  for (const id of slashes) {
+    const x = bladeTipX(id, 'end');
+    const side = x < 0 ? 'left' : 'right';
+    assert.equal(side, ATTACKS[id].endSide, `${id} ends with the tip at x = ${x.toFixed(2)}`);
+    assert.ok(Math.abs(x) > 0.3, `${id} ends clearly to one side`);
+  }
+});
+
+test('diagonals: / starts high on her right, \\ starts high on her left', () => {
+  assert.ok(bladeTipX(AttackId.Vertical, 'end') < -0.3, '/ finishes low left');
+  assert.ok(bladeTipX(AttackId.VerticalLeft, 'start') < 0, '\\ is wound up over the left shoulder');
+  assert.ok(bladeTipX(AttackId.VerticalLeft, 'end') > 0.3, '\\ finishes low right');
+});

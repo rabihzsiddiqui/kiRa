@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ATTACKS, attackDuration, EVADES } from '../src/combat/moves';
+import { ATTACKS, attackDuration, EVADES, EvadeId } from '../src/combat/moves';
+import { lowestPoint } from '../src/character/fk';
 import { CLIPS, LOCOMOTION, locomotionWeights } from '../src/character/clips';
 import { len, Ponytail, type HeadFrame } from '../src/character/Ponytail';
 import { BONE_IDS } from '../src/character/rig';
@@ -128,4 +129,17 @@ test('ponytail runs on the clock it is given: half the dt, half the motion', () 
   const tipFast = fast.points.at(-1)!;
   const tipSlow = slow.points.at(-1)!;
   assert.ok(dist(tipFast, tipSlow) < 1e-6, 'same simulated time, same result');
+});
+
+test('the roll stays on the floor all the way round: no sinking in, no floating', () => {
+  const roll = CLIPS.get(EVADES[EvadeId.Roll].anim)!;
+  let maxShift = 0;
+  for (let i = 0; i <= 30; i++) {
+    const pose = roll.sample((roll.duration * i) / 30);
+    const low = lowestPoint(pose);
+    assert.ok(low > 0.02 && low < 0.06, `frame ${i}: lowest point ${low.toFixed(3)} m`);
+    maxShift = Math.max(maxShift, Math.abs(pose.hipsZ ?? 0));
+  }
+  // It turns about the middle of the tucked body, so the hips swing around that point.
+  assert.ok(maxShift > 0.2, `hips move around the tuck's center (${maxShift.toFixed(2)} m)`);
 });

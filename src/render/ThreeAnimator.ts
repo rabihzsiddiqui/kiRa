@@ -19,6 +19,11 @@ const HIPS = BONES[0];
  *
  * It ticks on the PLAYER clock (Game.step), so animation slows with her in slow-mo.
  * Call bind() with the figure once it exists; until then it only records requests.
+ *
+ * Deferred mode (the game): tick() only advances logic, and render(alpha) moves the
+ * mixer to the same in-between moment the renderer draws her position at. Without it,
+ * a display frame that lands on 0 sim steps freezes her pose and the next one jumps
+ * two, which reads as a stutter while running even though her position is smooth.
  */
 export class ThreeAnimator implements Animator {
   clip = 'none';
@@ -35,8 +40,17 @@ export class ThreeAnimator implements Animator {
   private locoWeight = 1;
   private locoTarget = 1;
   private locoFade = 0;
+  /** Player-clock time at the last two ticks, and where the mixer has been drawn up to. */
+  private simPrev = 0;
+  private simTime = 0;
+  private drawn = 0;
+  private readonly log: boolean;
+  private readonly deferred: boolean;
 
-  constructor(private readonly log = false) {}
+  constructor(opts: { log?: boolean; deferred?: boolean } = {}) {
+    this.log = opts.log ?? false;
+    this.deferred = opts.deferred ?? false;
+  }
 
   bind(root: THREE.Object3D): void {
     const mixer = new THREE.AnimationMixer(root);
@@ -84,6 +98,8 @@ export class ThreeAnimator implements Animator {
   /** Advance with the PLAYER-scaled dt. */
   tick(dt: number): void {
     this.clipTime += dt;
+    this.simPrev = this.simTime;
+    this.simTime += dt;
     if (!this.mixer || !this.loco) return;
 
     // Locomotion group fades as a whole; inside it, the params pick the mix.
@@ -100,7 +116,23 @@ export class ThreeAnimator implements Animator {
     for (const k of Object.keys(this.loco) as LocoKey[]) this.loco[k].setEffectiveWeight(this.locoWeight * weights[k]);
     this.loco.run.setEffectiveTimeScale(runRate);
 
-    this.mixer.update(dt);
+    if (!this.deferred) {
+      this.mixer.update(dt);
+      this.drawn = this.simTime;
+    }
+  }
+
+  /**
+   * Deferred mode: pose the figure `alpha` of the way between the last two ticks
+   * (alpha = leftover accumulator / sim step, the same value position interpolation uses).
+   */
+  render(alpha: number): void {
+    if (!this.mixer || !this.deferred) return;
+    const target = this.simPrev + (this.simTime - this.simPrev) * Math.max(0, Math.min(1, alpha));
+    if (target > this.drawn) {
+      this.mixer.update(target - this.drawn);
+      this.drawn = target;
+    }
   }
 
   private start(clip: string, blend: number): void {
@@ -158,7 +190,7 @@ export function buildClip(def: ClipDef, fps = 60): THREE.AnimationClip {
       q.setFromEuler(euler.set(e[0] * DEG, e[1] * DEG, e[2] * DEG, 'YXZ'));
       q.toArray(rot.get(b.id)!, i * 4);
     }
-    hipsPos.set([HIPS.offset[0], HIPS_HEIGHT + (pose.hipsY ?? 0), HIPS.offset[2]], i * 3);
+    hipsPos.set([HIPS.offset[0], HIPS_HEIGHT + (pose.hipsY ?? 0), HIPS.offset[2] - (pose.hipsZ ?? 0)], i * 3); // forward is -Z
   }
 
   const tracks: THREE.KeyframeTrack[] = BONES.map((b) => new THREE.QuaternionKeyframeTrack(`${b.name}.quaternion`, times, rot.get(b.id)!));

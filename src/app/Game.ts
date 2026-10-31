@@ -61,7 +61,7 @@ export class Game {
   readonly input = new InputBuffer();
   readonly time = new TimeController();
   readonly events = new EventBus<PlayerEvents>();
-  readonly animator = new ThreeAnimator(true);
+  readonly animator = new ThreeAnimator({ log: true, deferred: true });
   readonly combat: CombatWorld;
   readonly fx = new LogFxSink(() => this.realTime);
   readonly motor: RapierMotor;
