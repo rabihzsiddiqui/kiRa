@@ -1,6 +1,6 @@
 import { vec2, type Vec2 } from '../../core/math';
 import { Action } from '../../input/actions';
-import { knobOffset, LOCK_GRACE, LOOK_SENSITIVITY, stickFromDrag, zoneAt } from './touchLayout';
+import { evadeLabel, knobOffset, LOCK_GRACE, LOOK_SENSITIVITY, stickFromDrag, zoneAt } from './touchLayout';
 import type { DeviceFrame, LookDelta } from './types';
 
 /** Sandbox controls with no gameplay action behind them. */
@@ -16,7 +16,7 @@ interface ButtonDef {
 
 const BUTTONS: readonly ButtonDef[] = [
   { action: Action.Attack, label: 'atk', className: 'touch-btn touch-btn-attack' },
-  { action: Action.Evade, label: 'evade', className: 'touch-btn touch-btn-evade' },
+  { action: Action.Evade, label: evadeLabel(false), className: 'touch-btn touch-btn-evade' }, // relabeled by lock state
   { action: Action.Block, label: 'block', className: 'touch-btn touch-btn-block' },
   { action: Action.Target, label: 'lock', className: 'touch-btn touch-btn-target', toggle: true },
 ];
@@ -30,8 +30,8 @@ const PILLS: ReadonlyArray<[TouchDebug, string]> = [
 
 /**
  * On-screen controls for phones and tablets. Left thumb: a floating joystick that appears
- * where the thumb lands. Right side: drag to look. Bottom right: attack, evade, block,
- * lock. Top right: small sandbox toggles.
+ * where the thumb lands. Right side: drag to look. Bottom right: attack, evade (labeled
+ * roll, or jump while locked on), block, lock. Top right: small sandbox toggles.
  *
  * Same contract as the other devices: poll() once per fixed step returns a DeviceFrame,
  * with taps latched so a press and release between two polls is still seen.
@@ -109,6 +109,7 @@ export class TouchControls {
     // A lock tap with nothing in range: hold it just long enough to recenter, then let go.
     if (this.targetOn && time - this.targetSince > LOCK_GRACE && !this.isLocked()) this.setTarget(false, time);
     if (this.targetOn && this.isLocked()) this.targetSince = time;
+    this.relabelEvade();
 
     const buttons: Partial<Record<Action, boolean>> = {};
     for (const a of [...this.held, ...this.latched]) buttons[a] = true;
@@ -151,6 +152,15 @@ export class TouchControls {
     b.addEventListener('pointerup', release);
     b.addEventListener('pointercancel', release);
     b.addEventListener('lostpointercapture', release);
+  }
+
+  /** Evade reads "jump" while locked on, "roll" otherwise. Touches the DOM only on a change. */
+  private relabelEvade(): void {
+    const b = this.buttons.get(Action.Evade);
+    const label = evadeLabel(this.isLocked());
+    if (!b || b.textContent === label) return;
+    b.textContent = label;
+    b.setAttribute('aria-label', label);
   }
 
   private setTarget(on: boolean, time: number): void {

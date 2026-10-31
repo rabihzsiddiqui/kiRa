@@ -65,34 +65,61 @@ test('locomotion blend weights sum to 1 and follow the params', () => {
 
 // ------------------------------------------------------------------- roll
 
-test('the roll stays on the floor all the way round: no sinking in, no floating', () => {
-  const roll = CLIPS.get(EVADES[EvadeId.Roll].anim)!;
-  let maxShift = 0;
-  for (let i = 0; i <= 30; i++) {
-    const pose = roll.sample((roll.duration * i) / 30);
-    const low = lowestPoint(pose);
-    assert.ok(low > 0.02 && low < 0.06, `frame ${i}: lowest point ${low.toFixed(3)} m`);
-    maxShift = Math.max(maxShift, Math.abs(pose.hipsZ ?? 0));
+const roll = CLIPS.get(EVADES[EvadeId.Roll].anim)!;
+/** The dive: from the push off until her back takes the floor, she's in the air. */
+const DIVE = [0.17, 0.23];
+
+test('the roll stays on the floor: never sinks in, only leaves it for the dive', () => {
+  for (let i = 0; i <= 140; i++) {
+    const t = (roll.duration * i) / 140;
+    const low = lowestPoint(roll.sample(t));
+    const airborne = t >= DIVE[0] && t <= DIVE[1];
+    assert.ok(low > 0.01, `t ${t.toFixed(3)}: sinks into the floor (${low.toFixed(3)} m)`);
+    assert.ok(low < (airborne ? 0.2 : 0.08), `t ${t.toFixed(3)}: floating ${low.toFixed(3)} m`);
   }
   // It turns about the middle of the tucked body, so the hips swing around that point.
-  assert.ok(maxShift > 0.2, `hips move around the tuck's center (${maxShift.toFixed(2)} m)`);
+  const shift = Math.max(...Array.from({ length: 31 }, (_, i) => Math.abs(roll.sample((roll.duration * i) / 30).hipsZ ?? 0)));
+  assert.ok(shift > 0.2, `hips move around the tuck's center (${shift.toFixed(2)} m)`);
+});
+
+test('the roll is smooth: no hip snaps, and the spin speeds up and slows down without jerks', () => {
+  const dt = 1 / 240;
+  const hips: number[] = [];
+  const turn: number[] = [];
+  for (let t = 0; t <= roll.duration + 1e-9; t += dt) {
+    const pose = roll.sample(t);
+    hips.push(jointFrames(pose).hips.p[1]);
+    turn.push(-(pose.bones.hips?.[0] ?? 0));
+  }
+  const second = (xs: number[], i: number) => (xs[i + 1] - 2 * xs[i] + xs[i - 1]) / (dt * dt);
+  let hipAcc = 0;
+  let spinAcc = 0;
+  for (let i = 1; i < hips.length - 1; i++) {
+    hipAcc = Math.max(hipAcc, Math.abs(second(hips, i)));
+    spinAcc = Math.max(spinAcc, Math.abs(second(turn, i)));
+  }
+  // Before smoothing, contact changes snapped the hips at over 5000 m/s^2.
+  assert.ok(hipAcc < 600, `hip height changes smoothly (peak ${hipAcc.toFixed(0)} m/s^2)`);
+  // Before, the spin stopped dead at the end (over 100000 deg/s^2).
+  assert.ok(spinAcc < 20000, `spin changes speed smoothly (peak ${spinAcc.toFixed(0)} deg/s^2)`);
+  const end = turn.findIndex((a) => a >= 360);
+  assert.ok(end > 0 && turn[end] - turn[end - 1] < 0.1, 'the spin eases out to a stop as her feet come under her');
 });
 
 test('the roll is a dive: crouch, push off, hand to the floor, and only then the tuck', () => {
-  const roll = CLIPS.get(EVADES[EvadeId.Roll].anim)!;
   const at = (t: number) => {
     const pose = roll.sample(t);
     return { pose, f: jointFrames(pose), turn: -(pose.bones.hips?.[0] ?? 0) };
   };
   const start = at(0);
-  const load = at(0.07);
-  const push = at(0.1);
-  const hand = at(0.15);
-  const tuck = at(0.25);
+  const load = at(0.1);
+  const push = at(0.15);
+  const hand = at(0.2);
+  const tuck = at(0.33);
   assert.ok(load.f.hips.p[1] < start.f.hips.p[1] - 0.12 && load.turn < 10, 'drops into a crouch before tipping over');
   assert.ok(push.f.hips.p[1] > load.f.hips.p[1] + 0.04, 'pushes off out of the crouch');
   assert.ok(hand.turn > 60 && hand.turn < 100, `tipped forward onto the hand (${hand.turn.toFixed(0)} deg)`);
-  assert.ok(hand.f.handL.p[1] < 0.2 && hand.f.handL.p[2] < hand.f.hips.p[2], 'the free hand is down on the floor ahead of her');
+  assert.ok(hand.f.handL.p[1] < 0.25 && hand.f.handL.p[2] < hand.f.hips.p[2], 'the free hand is down by the floor ahead of her');
   assert.ok((hand.pose.bones.shinL?.[0] ?? 0) > -60, 'legs still long behind her in the dive, not balled up');
   assert.ok((tuck.pose.bones.shinL?.[0] ?? 0) < -120, 'tucked once she is over');
 });

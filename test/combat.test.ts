@@ -90,14 +90,14 @@ test('a press too early in the move is dropped; one inside the buffer window fir
   const early = new HeadlessSandbox();
   early.step({ evade: true });
   early.run(3);
-  early.step({ attack: true }); // ~0.33 s before the roll can cancel: expires
+  early.step({ attack: true }); // ~0.5 s before the roll can cancel: expires
   early.run(40);
   assert.deepEqual(early.attacks, []);
 
   const late = new HeadlessSandbox();
   late.step({ evade: true });
-  late.run(19);
-  late.step({ attack: true }); // ~0.08 s before cancel window: buffered
+  late.run(29);
+  late.step({ attack: true }); // ~0.06 s before the cancel window: buffered
   late.run(10);
   assert.deepEqual(late.attacks, [AttackId.Horizontal]);
 });
@@ -185,12 +185,29 @@ test('traversal roll with the stick released still eases to a stop', () => {
   const sb = new HeadlessSandbox();
   sb.step({ evade: true });
   let endSpeed = Infinity;
-  for (let i = 0; i < 40 && sb.player.state === PlayerStateId.Evade; i++) {
+  for (let i = 0; i < 60 && sb.player.state === PlayerStateId.Evade; i++) {
     sb.step();
     endSpeed = Math.hypot(sb.motor.planarVelocity.x, sb.motor.planarVelocity.y);
   }
   assert.equal(sb.player.state, PlayerStateId.Grounded);
   assert.ok(endSpeed < 0.5, `slowed to a stop (${endSpeed.toFixed(2)} m/s)`);
+});
+
+test('a roll beats running: it covers clearly more ground than running for as long', () => {
+  const roll = EVADES[EvadeId.Roll];
+  const frames = Math.round(roll.duration * 60);
+  const ran = new HeadlessSandbox();
+  ran.run(30, { stick: FWD });
+  const r0 = ran.motor.position.y;
+  ran.run(frames, { stick: FWD });
+  const rolled = new HeadlessSandbox();
+  rolled.run(30, { stick: FWD });
+  const p0 = rolled.motor.position.y;
+  rolled.step({ stick: FWD, evade: true });
+  rolled.run(frames - 1, { stick: FWD });
+  const run = ran.motor.position.y - r0;
+  const dist = rolled.motor.position.y - p0;
+  assert.ok(dist > run * 1.2, `roll ${dist.toFixed(2)} m vs run ${run.toFixed(2)} m`);
 });
 
 test('the roll steers: holding the stick to one side bends it that way, at a limited rate', () => {

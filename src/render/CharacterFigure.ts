@@ -8,7 +8,7 @@ import { bobGeometry, faceSurfaceZ, fringeY, HEAD_ORIGIN, headGeometry, onBob } 
  * src/character/rig.ts) with rigid shaped meshes attached. Swap for a skinned glTF later;
  * the clips and the sword socket keep working as long as the bone names match.
  *
- * Look: a young swordswoman, faceless by design, with a short dark bob. A forest green
+ * Look: a young swordswoman, faceless by design, with a short dark bob. A midnight indigo
  * tunic with a cream front panel and gold trim, a standing collar, short sleeves over
  * cream undersleeves, a leather harness across the chest, a wide leather belt with a
  * sword belt slung low on the left, the empty scabbard hanging from it, long leather
@@ -34,7 +34,7 @@ export interface Figure {
 const PALETTE = {
   // A natural fair skin tone: the stylized grey-white read as a porcelain doll (uncanny).
   skin: 0xf0d2c0,
-  tunic: 0x2e5a34, // forest green
+  tunic: 0x272a66, // midnight indigo, in the brand's family
   cream: 0xe7dcc2, // front panel and undersleeves
   gold: 0xc9a246, // trim, buckles, sword fittings
   leather: 0x4b3022, // harness, belt, bracers
@@ -158,7 +158,7 @@ const chestNormal = (p: THREE.Vector3) => new THREE.Vector3(p.x * 0.6, Math.max(
 const panelTextures = new Map<string, THREE.Texture | null>();
 
 /**
- * The tunic's front: green with a cream panel down the middle, gold trim at its edges,
+ * The tunic's front: indigo with a cream panel down the middle, gold trim at its edges,
  * and a gold seam down the center. Painted once across u (around a lathe, or across a
  * skirt panel); `half` is the panel's half width in u. Null without a canvas (tests).
  */
@@ -201,7 +201,7 @@ export function buildFigure(): Figure {
     materials.push(m);
     return m;
   };
-  /** Tunic cloth with the front panel painted on, or plain green where there's no canvas. */
+  /** Tunic cloth with the front panel painted on, or plain indigo where there's no canvas. */
   const panelMat = (half: number) => {
     const map = panelTexture(half);
     return mat(map ? 0xffffff : PALETTE.tunic, { map, roughness: 0.8, side: THREE.DoubleSide });
@@ -255,12 +255,12 @@ export function buildFigure(): Figure {
   part('spine', lathe([[0.112, -0.04], [0.098, 0.03], [0.1, 0.1], [0.115, 0.17], [0.122, 0.2]], 0.74, 32), tunicFront);
   part('chest', chestGeometry(), tunicFront);
 
-  // Standing collar, green with a gold edge and a clasp at the front.
+  // Standing collar, indigo with a gold edge and a clasp at the front.
   part('chest', lathe([[0.049, 0.186], [0.047, 0.232]], 0.95, 24), tunic);
   part('chest', ring(0.0485, 0.229, 0.236, 0.95), gold);
   part('chest', new THREE.BoxGeometry(0.012, 0.016, 0.006), gold, [0, 0.214, -0.047]);
 
-  // Shoulders, each capped by a green shoulder panel edged in gold.
+  // Shoulders, each capped by an indigo shoulder panel edged in gold.
   for (const side of ['L', 'R'] as const) {
     const out = side === 'R' ? 1 : -1;
     part(`shoulder${side}`, ellipsoid(0.046, 0.042, 0.045), tunic, [out * 0.085, -0.012, 0]);
@@ -382,7 +382,7 @@ export function buildFigure(): Figure {
   // ------------------------------------------------------------------ arms
   for (const side of ['L', 'R'] as const) {
     const out = side === 'R' ? 1 : -1;
-    // Green short sleeve with a gold hem over a cream undersleeve.
+    // Indigo short sleeve with a gold hem over a cream undersleeve.
     part(`upperArm${side}`, lathe([[0.047, 0.012], [0.049, -0.05], [0.048, -0.11], [0.047, -0.125]], 0.95), tunic);
     part(`upperArm${side}`, ring(0.0498, -0.111, -0.126, 0.95), gold);
     part(`upperArm${side}`, lathe([[0.04, 0.01], [0.043, -0.05], [0.04, -0.12], [0.034, -0.22], [0.031, -0.27]], 0.92), cream);

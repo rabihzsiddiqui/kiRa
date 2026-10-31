@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   JOYSTICK_RADIUS,
   knobOffset,
+  evadeLabel,
   stickFromDrag,
   wantsTouchControls,
   zoneAt,
@@ -40,4 +41,9 @@ test('touch controls show on phones and tablets, not on laptops with a touchscre
   assert.equal(wantsTouchControls({ coarsePointer: true, maxTouchPoints: 5 }), true);
   assert.equal(wantsTouchControls({ coarsePointer: false, maxTouchPoints: 10 }), false, 'touch laptop with a mouse');
   assert.equal(wantsTouchControls({ coarsePointer: false, maxTouchPoints: 0 }), false);
+});
+
+test('the evade button says what it will do: roll when free, jump when locked on', () => {
+  assert.equal(evadeLabel(false), 'roll');
+  assert.equal(evadeLabel(true), 'jump');
 });

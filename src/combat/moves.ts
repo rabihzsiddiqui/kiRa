@@ -292,8 +292,8 @@ export interface EvadeDef {
 
 export const EVADES: Readonly<Record<EvadeId, EvadeDef>> = {
   [EvadeId.Roll]: {
-    id: EvadeId.Roll, anim: 'evade_roll', duration: 0.5, speed: 7, upSpeed: 0,
-    invulnFrom: 0.04, invulnTo: 0.3, cancelFrom: 0.42, faceTravel: true, steerRate: 4,
+    id: EvadeId.Roll, anim: 'evade_roll', duration: 0.7, speed: 8.5, upSpeed: 0,
+    invulnFrom: 0.04, invulnTo: 0.3, cancelFrom: 0.58, faceTravel: true, steerRate: 3,
   },
   [EvadeId.SideHopLeft]: {
     id: EvadeId.SideHopLeft, anim: 'evade_hop_left', duration: 0.4, speed: 6, upSpeed: 4,

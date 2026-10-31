@@ -728,15 +728,34 @@ const ROLL_REACH: Pose = {
     chest: [-15, 0, 0],
     neck: [-30, 0, 0],
     head: [-25, 0, 0],
-    upperArmR: [95, 0, 20],
-    forearmR: [40, 0, 0],
-    handR: [0, -90, 0],
-    upperArmL: [125, 0, -8],
-    forearmL: [15, 0, 0],
+    ...ROLL_SWORD,
+    upperArmL: [100, 0, -8],
+    forearmL: [70, 0, 0],
     thighL: [30, 0, 0],
     shinL: [-35, 0, 0],
     thighR: [-8, 0, 0],
     shinR: [-15, 0, 0],
+  },
+};
+
+/**
+ * The catch: the hand on the floor bends to take her weight and lower her onto the back of
+ * her shoulder, chin tucked, while the legs start to fold. Without it the straight arm props
+ * her up like a handstand for a moment and she drops.
+ */
+const ROLL_CATCH: Pose = {
+  bones: {
+    spine: [-45, 0, 0],
+    chest: [-35, 0, 0],
+    neck: [-55, 0, 0],
+    head: [-35, 0, 0],
+    ...ROLL_SWORD,
+    upperArmL: [70, 0, -10],
+    forearmL: [110, 0, 0],
+    thighL: [75, 0, 0],
+    shinL: [-90, 0, 0],
+    thighR: [55, 0, 0],
+    shinR: [-80, 0, 0],
   },
 };
 
@@ -831,55 +850,98 @@ function splined(keys: Array<[number, Pose]>): (t: number) => Pose {
 const ROLL_CENTER = { up: 0.27, forward: 0 };
 
 /** Roll timing (seconds): start tipping, hand on the floor, back on the feet. */
-const ROLL_TIP = 0.05;
-const ROLL_HANDS = 0.15;
-const ROLL_UP = 0.36;
+const ROLL_TIP = 0.07;
+const ROLL_HANDS = 0.2;
+const ROLL_UP = 0.5;
 /** How far she has tipped over when the hand meets the floor (degrees). */
 const ROLL_DIVE_ANGLE = 85;
 
 /**
- * Total forward turn at time t. Speeds up through the dive (she tips over her hand), then
- * rolls on at the same rate and eases out as she comes up. The two pieces are matched so
- * the spin never jerks where they meet.
+ * Total forward turn at time t. Speeds up through the dive (she tips over her hand), rolls
+ * on at the same rate, then eases to a stop as her feet come under her. Each piece starts
+ * at the speed the last one ended on, so the spin never jerks.
  */
 function rollTurn(t: number): number {
   const A = ROLL_DIVE_ANGLE;
   if (t <= ROLL_TIP) return 0;
-  if (t <= ROLL_HANDS) return A * ((t - ROLL_TIP) / (ROLL_HANDS - ROLL_TIP)) ** 2;
-  const u = clamp01((t - ROLL_HANDS) / (ROLL_UP - ROLL_HANDS));
-  return A + (360 - A) * (0.7 * u + 0.3 * (1 - (1 - u) ** 2));
+  const dive = ROLL_HANDS - ROLL_TIP;
+  if (t <= ROLL_HANDS) return A * ((t - ROLL_TIP) / dive) ** 2;
+  if (t >= ROLL_UP) return 360;
+  // Cubic from the dive's end speed down to zero (Hermite): f(0)=0, f(1)=1, f'(1)=0.
+  const span = ROLL_UP - ROLL_HANDS;
+  const s0 = ((2 * A) / dive) * (span / (360 - A)); // dive's end speed, in this piece's units
+  const u = (t - ROLL_HANDS) / span;
+  const f = s0 * (u - 2 * u * u + u * u * u) + (3 * u * u - 2 * u * u * u);
+  return A + (360 - A) * f;
+}
+
+/** How far smoothing may let her dip into the floor (meters). */
+const ROLL_SINK = 0.018;
+
+/**
+ * Hip height that keeps the lowest part of her on the floor, smoothed. Placing every frame
+ * exactly makes the hips snap whenever a different part becomes the lowest (feet, hand,
+ * back, feet again). So: sample the exact heights, then blur them over and over, each time
+ * lifting back any spot that sank more than ROLL_SINK below the exact height. Repeating
+ * rounds off the corners a single blur-and-lift would leave.
+ */
+function smoothedFloorHeights(pose: (t: number) => Pose, duration: number, step: number): number[] {
+  const n = Math.round(duration / step);
+  const exact: number[] = [];
+  for (let i = 0; i <= n; i++) exact.push(onGround(pose(i * step), 0.04).hipsY ?? 0);
+  const sigma = 0.008 / step;
+  const radius = Math.ceil(sigma * 2.5);
+  const kernel = Array.from({ length: radius * 2 + 1 }, (_, k) => Math.exp(-(((k - radius) / sigma) ** 2) / 2));
+  const total = kernel.reduce((a, b) => a + b, 0);
+  let h = exact.slice();
+  for (let pass = 0; pass < 6; pass++) {
+    h = h.map((_, i) => {
+      let sum = 0;
+      for (let k = -radius; k <= radius; k++) sum += h[Math.max(0, Math.min(n, i + k))] * kernel[k + radius];
+      return Math.max(sum / total, exact[i] - ROLL_SINK);
+    });
+  }
+  return h;
 }
 
 /**
- * Dive roll along the ground: a quick crouch, a dive forward onto the free hand, one turn
- * balled up, then up onto the feet. Two things make it a roll and not a flip in the air:
- * it turns about the middle of the tucked body (hipsZ shifts the hips around that point),
- * and every frame is placed so the lowest part of the body touches the floor. The motor
- * supplies the travel; at roll speed the turn roughly matches the ground covered, so she
- * doesn't skid.
+ * Dive roll along the ground: a crouch, a dive forward onto the free hand, one turn balled
+ * up, then up onto the feet. Two things make it a roll and not a flip in the air: it turns
+ * about the middle of the tucked body (hipsZ shifts the hips around that point), and her
+ * lowest part stays on the floor (smoothed, see smoothedFloorHeights). The motor supplies
+ * the travel.
  */
 function rollClip(): ClipDef {
   const d = E[EvadeId.Roll];
   const shape = splined([
     [0, ROLL_EXIT],
-    [0.07, ROLL_LOAD],
+    [0.1, ROLL_LOAD],
     [ROLL_HANDS, ROLL_REACH],
-    [0.21, ROLL_TUCK],
+    [0.21, ROLL_CATCH],
     [0.29, ROLL_TUCK],
+    [0.4, ROLL_TUCK],
     [ROLL_UP, ROLL_RISE],
     [d.duration, ROLL_EXIT],
   ]);
+  const turned = (t: number): Pose => {
+    const turn = rollTurn(t);
+    const a = turn * (Math.PI / 180);
+    const c = ROLL_CENTER;
+    // Where the center would go if the body turned about the hips, undone by moving the hips.
+    const hipsZ = c.forward - (c.up * Math.sin(a) + c.forward * Math.cos(a));
+    return { ...withHips(shape(t), [-turn, 0, 0]), hipsZ };
+  };
+  const STEP = 1 / 240;
+  const heights = smoothedFloorHeights(turned, d.duration, STEP);
   return {
     name: d.anim,
     duration: d.duration,
     loop: false,
     sample: (t) => {
-      const turn = rollTurn(t);
-      const a = turn * (Math.PI / 180);
-      const c = ROLL_CENTER;
-      // Where the center would go if the body turned about the hips, undone by moving the hips.
-      const hipsZ = c.forward - (c.up * Math.sin(a) + c.forward * Math.cos(a));
-      return onGround({ ...withHips(shape(t), [-turn, 0, 0]), hipsZ }, 0.04);
+      const x = Math.max(0, Math.min(heights.length - 1, t / STEP));
+      const i = Math.min(heights.length - 2, Math.floor(x));
+      const hipsY = heights[i] + (heights[i + 1] - heights[i]) * (x - i);
+      return { ...turned(t), hipsY };
     },
   };
 }

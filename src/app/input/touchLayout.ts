@@ -45,3 +45,11 @@ export function zoneAt(x: number, width: number): 'stick' | 'look' {
 export function wantsTouchControls(env: { coarsePointer: boolean; maxTouchPoints: number }): boolean {
   return env.coarsePointer && env.maxTouchPoints > 0;
 }
+
+/**
+ * What the evade button does right now, as its label: locked on, evade is the jump attack
+ * (or a hop or backflip with the stick); free, it's a roll.
+ */
+export function evadeLabel(locked: boolean): 'jump' | 'roll' {
+  return locked ? 'jump' : 'roll';
+}

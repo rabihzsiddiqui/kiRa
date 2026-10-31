@@ -81,7 +81,8 @@ export class SwordTrail {
    * clock (trails linger in slow-mo along with her).
    */
   update(dt: number, input: SwordTrailInput): void {
-    this.time += dt;
+    // Wraps so the shimmer's sin() inputs stay small and precise in long sessions.
+    this.time = (this.time + dt) % 1000;
     for (const p of this.points) p.age += dt;
     while (this.points.length && this.points[0].age >= this.points[0].life) this.points.shift();
 
@@ -103,6 +104,8 @@ export class SwordTrail {
     const { hilt, tip } = this.v;
     group.localToWorld(hilt.set(0, 0, hiltZ));
     group.localToWorld(tip.set(0, 0, tipZ));
+    // A bad frame (non-finite pose) must never reach the GPU: it would draw as NaN.
+    if (![hilt.x, hilt.y, hilt.z, tip.x, tip.y, tip.z].every(Number.isFinite)) return;
     const blade = tip.clone().sub(hilt);
     const now = { base: hilt.clone().addScaledVector(blade, style.base), tip: tip.clone().addScaledVector(blade, style.reach) };
 
@@ -193,10 +196,13 @@ const FRAG = /* glsl */ `
   varying vec3 vCore;
   varying vec3 vEdge;
   void main() {
-    float age = vParams.x;
-    float across = vParams.y; // 0 at the base, 1 at the tip
-    float shimmer = vParams.z;
-    float intensity = vParams.w;
+    // Interpolated varyings can land a hair outside 0..1, and pow() of a negative number
+    // is NaN on some GPUs. One NaN pixel in the half-float buffer gets smeared by bloom
+    // into black blocks or a black frame, so clamp everything that feeds pow().
+    float age = clamp(vParams.x, 0.0, 1.0);
+    float across = clamp(vParams.y, 0.0, 1.0); // 0 at the base, 1 at the tip
+    float shimmer = clamp(vParams.z, 0.0, 1.0);
+    float intensity = max(vParams.w, 0.0);
     float fade = pow(1.0 - age, 1.6);
     // Thin toward the base, a bright leading band near the tip.
     float body = smoothstep(0.0, 0.55, across);
@@ -205,9 +211,11 @@ const FRAG = /* glsl */ `
     float alpha = fade * body * (0.45 + 0.55 * edgeBand);
     // Specials: bands that run back along the trail, and glints near the tip.
     float bands = 0.65 + 0.35 * sin(age * 28.0 - uTime * 18.0 + across * 5.0);
-    float glint = pow(max(0.0, sin(age * 61.0 + uTime * 7.0) * sin(across * 23.0 - uTime * 11.0)), 8.0) * edgeBand;
+    float spark = clamp(sin(age * 61.0 + uTime * 7.0) * sin(across * 23.0 - uTime * 11.0), 0.0, 1.0);
+    float glint = pow(spark, 8.0) * edgeBand;
     alpha *= mix(1.0, bands, shimmer);
     color += shimmer * glint * 1.5 * vCore;
-    gl_FragColor = vec4(color * intensity, alpha);
+    // Additive: keep it finite and non-negative whatever happens above.
+    gl_FragColor = vec4(clamp(color * intensity, 0.0, 8.0), clamp(alpha, 0.0, 1.0));
   }
 `;
