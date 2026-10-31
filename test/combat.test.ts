@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { HeadlessSandbox, type FrameInput } from '../src/sandbox/HeadlessSandbox';
 import { AttackId, EvadeId } from '../src/combat/moves';
-import { PlayerStateId } from '../src/player/contracts';
+import { DEFAULT_TUNING, PlayerStateId } from '../src/player/contracts';
 import type { EvadeState } from '../src/player/states/EvadeState';
 import type { PerfectBlockState } from '../src/player/states/PerfectStates';
 import { vec2, TAU } from '../src/core/math';
@@ -151,6 +151,32 @@ test('untargeted evade = forward roll', () => {
   sb.step({ evade: true });
   assert.equal(sb.player.state, PlayerStateId.Evade);
   assert.equal(evadeId(sb), EvadeId.Roll);
+});
+
+test('traversal roll keeps her running momentum: no stop between the roll and the run', () => {
+  const sb = new HeadlessSandbox();
+  sb.run(30, { stick: FWD });
+  sb.step({ stick: FWD, evade: true });
+  const speeds: number[] = [];
+  for (let i = 0; i < 45; i++) {
+    sb.step({ stick: FWD });
+    speeds.push(Math.hypot(sb.motor.planarVelocity.x, sb.motor.planarVelocity.y));
+  }
+  assert.ok(sb.trace.some((t) => t.endsWith('Evade -> Grounded')), 'the roll finished');
+  const slowest = Math.min(...speeds);
+  assert.ok(slowest >= DEFAULT_TUNING.runSpeed - 1e-6, `never dropped below run speed (${slowest.toFixed(2)} m/s)`);
+});
+
+test('traversal roll with the stick released still eases to a stop', () => {
+  const sb = new HeadlessSandbox();
+  sb.step({ evade: true });
+  let endSpeed = Infinity;
+  for (let i = 0; i < 40 && sb.player.state === PlayerStateId.Evade; i++) {
+    sb.step();
+    endSpeed = Math.hypot(sb.motor.planarVelocity.x, sb.motor.planarVelocity.y);
+  }
+  assert.equal(sb.player.state, PlayerStateId.Grounded);
+  assert.ok(endSpeed < 0.5, `slowed to a stop (${endSpeed.toFixed(2)} m/s)`);
 });
 
 test('targeted evade + left/right = side hop, + back = backflip', () => {

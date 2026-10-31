@@ -1,7 +1,7 @@
-import { normalize, scale, type Vec2 } from '../../core/math';
+import { length, normalize, scale, type Vec2 } from '../../core/math';
 import { EVADES, EvadeId, type EvadeDef } from '../../combat/moves';
 import { PlayerStateId, type Defense, type PlayerContext, type PlayerState } from '../contracts';
-import { commitIntent, readIntent, type EvadeParams } from './shared';
+import { commitIntent, freeRunSpeed, moveVector, readIntent, type EvadeParams } from './shared';
 
 /**
  * Roll, side hops and backflip. Direction was decided by the IntentResolver;
@@ -13,9 +13,16 @@ export class EvadeState implements PlayerState {
   private def: EvadeDef = EVADES[EvadeId.Roll];
   private t = 0;
   private dir: Vec2 = { x: 0, y: 1 };
+  /** Traversal roll (not locked on): ends at run speed instead of a stop. */
+  private carry = false;
 
   get evade(): EvadeId {
     return this.def.id;
+  }
+
+  /** Player-clock seconds since the evade started. */
+  get elapsed(): number {
+    return this.t;
   }
 
   enter(ctx: PlayerContext, params: unknown): void {
@@ -23,6 +30,7 @@ export class EvadeState implements PlayerState {
     this.def = EVADES[p.evade];
     this.dir = normalize(p.dir);
     this.t = 0;
+    this.carry = this.def.faceTravel && !ctx.targeting.isLocked;
 
     if (this.def.faceTravel) ctx.motor.turnToward(this.dir, Infinity, 0);
     if (this.def.upSpeed > 0) ctx.motor.launch(this.def.upSpeed);
@@ -41,10 +49,13 @@ export class EvadeState implements PlayerState {
       if (toTarget) ctx.motor.turnToward(toTarget, ctx.tuning.lockTurnRate, dt);
     }
 
-    // Full speed, then ease out over the last quarter so landings don't skate.
+    // Full speed, then ease out over the last quarter. Combat evades ease to a stop so
+    // landings don't skate. A traversal roll eases into the run the stick is asking for,
+    // so rolling while running keeps her momentum (neutral stick still stops).
     const easeStart = def.duration * 0.75;
     const k = this.t < easeStart ? 1 : Math.max(0, (def.duration - this.t) / (def.duration - easeStart));
-    ctx.motor.setPlanarVelocity(scale(this.dir, def.speed * k));
+    const exitSpeed = this.carry ? Math.min(def.speed, freeRunSpeed(ctx, length(moveVector(ctx)))) : 0;
+    ctx.motor.setPlanarVelocity(scale(this.dir, exitSpeed + (def.speed - exitSpeed) * k));
 
     if (this.t >= def.cancelFrom) {
       const next = commitIntent(ctx, readIntent(ctx, { allowAttack: true, allowEvade: true }));

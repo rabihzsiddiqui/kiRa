@@ -1,7 +1,29 @@
 import { length } from '../core/math';
+import { PlayerStateId } from '../player/contracts';
+import type { EvadeState } from '../player/states/EvadeState';
 import type { Devices } from './input/Devices';
 import type { PadLabels } from './input/padLayout';
 import type { Game } from './Game';
+
+/** Debug switches the HUD shows. main.ts owns them; the HUD only reads. */
+export interface DebugFlags {
+  hitAreas: boolean;
+  slowmo: boolean;
+  infinitePerfect: boolean;
+}
+
+interface ToggleKeys {
+  hitAreas: string;
+  slowmo: string;
+  infinitePerfect: string;
+}
+
+const KEYBOARD_TOGGLES: ToggleKeys = { hitAreas: 'v', slowmo: 'n', infinitePerfect: 'i' };
+const padToggles = (l: PadLabels): ToggleKeys => ({
+  hitAreas: 'd-pad down',
+  slowmo: l.leftClick,
+  infinitePerfect: l.rightClick,
+});
 
 const KEYBOARD_CONTROLS: ReadonlyArray<[string, string]> = [
   ['move', 'wasd'],
@@ -13,10 +35,9 @@ const KEYBOARD_CONTROLS: ReadonlyArray<[string, string]> = [
   ['jump atk', 'evade while locked on'],
   ['dummy ai', 'h on / off'],
   ['strings', '1 to 4, 0 cycles'],
-  ['hit areas', 'v'],
   ['pause sim', 'p'],
   ['mute', 'm'],
-  ['overlay', 'tab'],
+  ['hud', 'tab'],
 ];
 
 /** Controls list for the active pad, in its own button names. */
@@ -30,21 +51,38 @@ const padControls = (l: PadLabels): ReadonlyArray<[string, string]> => [
   ['jump atk', 'evade while locked on'],
   ['dummy ai', 'd-pad up'],
   ['strings', 'd-pad left / right'],
-  ['hit areas', 'd-pad down'],
   ['pause sim', 'start'],
   ['mute', 'm'],
-  ['overlay', 'back'],
+  ['hud', 'back'],
 ];
 
+/** Buffered presses shown at once. The buffer rarely holds more than two. */
+const BUFFER_SLOTS = 4;
+
+interface BarRow {
+  row: HTMLElement;
+  label: HTMLElement;
+  fill: HTMLElement;
+  value: HTMLElement;
+}
+
 /**
- * Debug overlay. Read only: it looks at the game, never changes it.
- * Plain DOM with textContent, so there is nothing to escape and no framework.
+ * Debug HUD, two panels. Left: live state (FSM, move phase, input buffer, perfect
+ * windows, clocks, debug switches). Right: recent transitions, combat, cues, controls.
+ * Read only: it looks at the game, never changes it. Plain DOM with textContent, so
+ * there is nothing to escape and no framework.
  */
 export class DebugOverlay {
-  private readonly root: HTMLElement;
+  private readonly live: HTMLElement;
+  private readonly log: HTMLElement;
   private readonly rows = new Map<string, HTMLElement>();
-  private readonly worldBar: HTMLElement;
-  private readonly playerBar: HTMLElement;
+  private readonly world: BarRow;
+  private readonly playerClock: BarRow;
+  private readonly buffer: BarRow[] = [];
+  private readonly bufferEmpty: HTMLElement;
+  private readonly dodge: BarRow;
+  private readonly block: BarRow;
+  private readonly toggles = new Map<keyof DebugFlags, { key: HTMLElement; state: HTMLElement }>();
   private readonly transitions: HTMLElement;
   private readonly combat: HTMLElement;
   private readonly cues: HTMLElement;
@@ -56,58 +94,100 @@ export class DebugOverlay {
     parent: HTMLElement,
     private readonly game: Game,
     private readonly devices: Devices,
+    private readonly flags: () => DebugFlags,
   ) {
-    this.root = el('aside', 'hud');
-    this.root.append(heading('kiRa', 'sandbox'));
+    // ---- left: live state
+    this.live = el('aside', 'hud');
+    this.live.append(heading('kiRa', 'debug'));
 
     const stats = el('dl', 'hud-stats');
-    for (const key of ['state', 'in state', 'clip', 'hitbox', 'target', 'motor', 'dummy', 'ai', 'device']) {
+    for (const key of ['state', 'in state', 'move', 'clip', 'hitbox', 'target', 'motor', 'dummy', 'ai', 'device']) {
       const value = el('dd', 'hud-value');
       stats.append(text('dt', 'hud-key', key), value);
       this.rows.set(key, value);
     }
-    this.root.append(stats);
+    this.live.append(stats);
 
-    this.root.append(section('clocks'));
-    this.worldBar = el('div', 'hud-bar-fill');
-    this.playerBar = el('div', 'hud-bar-fill hud-bar-fill-cyan');
-    this.root.append(bar('world', this.worldBar), bar('player', this.playerBar));
+    this.live.append(section('input buffer'));
+    for (let i = 0; i < BUFFER_SLOTS; i++) {
+      const b = barRow('', 'hud-bar-fill-live');
+      b.row.hidden = true;
+      this.buffer.push(b);
+      this.live.append(b.row);
+    }
+    this.bufferEmpty = text('p', 'hud-empty', 'nothing waiting');
+    this.live.append(this.bufferEmpty);
 
-    this.root.append(section('transitions'));
+    this.live.append(section('perfect windows'));
+    this.dodge = barRow('dodge', 'hud-bar-fill-live hud-bar-fill-cyan');
+    this.block = barRow('block', 'hud-bar-fill-live hud-bar-fill-cyan');
+    this.live.append(this.dodge.row, this.block.row);
+
+    this.live.append(section('clocks'));
+    this.world = barRow('world');
+    this.playerClock = barRow('player', 'hud-bar-fill-cyan');
+    this.live.append(this.world.row, this.playerClock.row);
+
+    this.live.append(section('toggles'));
+    const toggles = el('dl', 'hud-toggles');
+    const names: Array<[keyof DebugFlags, string]> = [
+      ['hitAreas', 'hit areas'],
+      ['slowmo', 'slow-mo'],
+      ['infinitePerfect', 'infinite perfect'],
+    ];
+    for (const [flag, name] of names) {
+      const key = el('span', 'hud-toggle-key');
+      const state = el('span', 'hud-toggle-state');
+      const dd = el('dd', 'hud-toggle');
+      dd.append(key, state);
+      toggles.append(text('dt', 'hud-key', name), dd);
+      this.toggles.set(flag, { key, state });
+    }
+    this.live.append(toggles);
+
+    // ---- right: logs and controls
+    this.log = el('aside', 'hud hud-log');
+
+    this.log.append(section('transitions'));
     this.transitions = el('ol', 'hud-list');
-    this.root.append(this.transitions);
+    this.log.append(this.transitions);
 
-    this.root.append(section('combat'));
+    this.log.append(section('combat'));
     this.combat = el('ol', 'hud-list');
-    this.root.append(this.combat);
+    this.log.append(this.combat);
 
-    this.root.append(section('fx cues'));
+    this.log.append(section('fx cues'));
     this.cues = el('ol', 'hud-list');
-    this.root.append(this.cues);
+    this.log.append(this.cues);
 
-    this.root.append(section('controls'));
+    this.log.append(section('controls'));
     this.controls = el('dl', 'hud-stats hud-controls');
-    this.root.append(this.controls);
+    this.log.append(this.controls);
+    // The first section of a panel sits flush with the top padding.
+    this.log.firstElementChild?.classList.add('hud-section-first');
 
     this.hint = text('p', 'hud-hint', 'click the arena to capture the mouse');
-    parent.append(this.root, this.hint);
+    parent.append(this.live, this.log, this.hint);
   }
 
   toggle(): void {
-    this.root.hidden = !this.root.hidden;
+    const hide = !this.live.hidden;
+    this.live.hidden = hide;
+    this.log.hidden = hide;
   }
 
   update(fps: number): void {
     const onPad = this.devices.active === 'gamepad';
     // The mouse hint only matters on keyboard and mouse.
     this.hint.hidden = onPad || this.devices.keyboard.pointerLocked;
-    if (this.root.hidden) return;
+    if (this.live.hidden) return;
     this.renderControls();
     const g = this.game;
     const m = g.motor;
 
     this.set('state', g.player.state);
     this.set('in state', `${g.player.fsm.timeInState.toFixed(2)} s`);
+    this.set('move', moveText(g));
     this.set('clip', g.animator.clip);
     this.set('hitbox', g.combat.activePlayerAttack ?? (g.player.inPerfectDodgeWindow ? 'off, graze on' : 'off'));
     this.set('target', g.targeting.isLocked ? `dummy, ${g.targeting.distanceToTarget().toFixed(1)} m` : 'none');
@@ -125,21 +205,58 @@ export class DebugOverlay {
       : `keyboard${this.devices.keyboard.pointerLocked ? ', mouse captured' : ''}${pad.name ? ', pad idle' : ''}`;
     this.set('device', `${device}, ${fps.toFixed(0)} fps`);
 
-    setBar(this.worldBar, g.time.worldScale);
-    setBar(this.playerBar, g.time.playerScale);
+    this.renderBuffer();
+    this.renderWindows();
+
+    setBar(this.world, g.time.worldScale, g.time.worldScale.toFixed(2));
+    setBar(this.playerClock, g.time.playerScale, g.time.playerScale.toFixed(2));
+
+    const flags = this.flags();
+    for (const [flag, { state }] of this.toggles) {
+      const on = flags[flag];
+      setText(state, on ? 'on' : 'off');
+      state.classList.toggle('hud-toggle-on', on);
+    }
 
     replaceItems(
       this.transitions,
-      g.transitions.slice(0, 5).map((t) => `f${t.frame}  ${t.from ?? 'start'} → ${t.to}`),
+      g.transitions.slice(0, 4).map((t) => `f${t.frame}  ${t.from ?? 'start'} → ${t.to}`),
     );
     replaceItems(
       this.combat,
-      g.combatLog.slice(0, 5).map((c) => `${c.text}  ${(g.realTime - c.at).toFixed(1)} s`),
+      g.combatLog.slice(0, 4).map((c) => `${c.text}  ${(g.realTime - c.at).toFixed(1)} s`),
     );
     replaceItems(
       this.cues,
-      g.fx.recent.slice(0, 4).map((c) => `${c.cue}  ${(g.realTime - c.at).toFixed(1)} s`),
+      g.fx.recent.slice(0, 3).map((c) => `${c.cue}  ${(g.realTime - c.at).toFixed(1)} s`),
     );
+  }
+
+  /** Each waiting press as a bar of how much buffer window it has left. */
+  private renderBuffer(): void {
+    const { input } = this.game;
+    const window = input.cfg.bufferWindow;
+    const pending = input.pending;
+    this.buffer.forEach((b, i) => {
+      const p = pending[i];
+      b.row.hidden = !p;
+      if (!p) return;
+      const age = input.now - p.time;
+      setText(b.label, p.action);
+      setBar(b, 1 - age / window, `${age.toFixed(2)}`);
+    });
+    this.bufferEmpty.hidden = pending.length > 0;
+  }
+
+  /** Time left in each perfect window, in seconds on the clock that window runs on. */
+  private renderWindows(): void {
+    const { tuning } = this.game.player.ctx;
+    const w = this.game.player.perfectWindows();
+    const left = (frac: number, window: number) =>
+      frac <= 0 ? 'shut' : Number.isFinite(window) ? (frac * window).toFixed(2) : 'inf';
+    setBar(this.dodge, w.dodge, left(w.dodge, tuning.perfectDodgeWindow));
+    setBar(this.block, w.block, w.blockLockedOut ? 'mash' : left(w.block, tuning.perfectBlockWindow));
+    this.block.row.classList.toggle('hud-bar-row-warn', w.blockLockedOut);
   }
 
   /** Rebuilt only when the active device (or pad family) changes. */
@@ -148,14 +265,28 @@ export class DebugOverlay {
     const key = onPad ? `pad:${this.devices.gamepad.family}` : 'keyboard';
     if (key === this.controlsFor) return;
     this.controlsFor = key;
-    const rows = onPad ? padControls(this.devices.gamepad.labels) : KEYBOARD_CONTROLS;
+    const labels = this.devices.gamepad.labels;
+    const rows = onPad ? padControls(labels) : KEYBOARD_CONTROLS;
     this.controls.replaceChildren(...rows.flatMap(([k, v]) => [text('dt', 'hud-key', k), text('dd', 'hud-value', v)]));
+    const keys = onPad ? padToggles(labels) : KEYBOARD_TOGGLES;
+    for (const [flag, t] of this.toggles) setText(t.key, keys[flag]);
   }
 
   private set(key: string, value: string): void {
     const node = this.rows.get(key);
-    if (node && node.textContent !== value) node.textContent = value;
+    if (node) setText(node, value);
   }
+}
+
+/** The move in progress: attack with its phase and combo step, or the evade and its clock. */
+function moveText(g: Game): string {
+  const a = g.player.attack;
+  if (a) return `${a.attack}, ${a.phase}${a.combo > 0 ? `, combo ${a.combo + 1}` : ''}`;
+  if (g.player.state === PlayerStateId.Evade) {
+    const e = g.player.fsm.current as EvadeState;
+    return `${e.evade.replaceAll('_', ' ')}, ${e.elapsed.toFixed(2)} s`;
+  }
+  return 'none';
 }
 
 function aiText(g: Game): string {
@@ -180,6 +311,10 @@ function text(tag: string, className: string, value: string): HTMLElement {
   return node;
 }
 
+function setText(node: HTMLElement, value: string): void {
+  if (node.textContent !== value) node.textContent = value;
+}
+
 /** Title with the square accent mark that every heading uses. */
 function heading(title: string, label: string): HTMLElement {
   const h = el('header', 'hud-header');
@@ -195,19 +330,20 @@ function section(title: string): HTMLElement {
   return h;
 }
 
-function bar(label: string, fill: HTMLElement): HTMLElement {
+function barRow(label: string, fillClass = ''): BarRow {
   const row = el('div', 'hud-bar-row');
   const track = el('div', 'hud-bar');
+  const fill = el('div', `hud-bar-fill ${fillClass}`.trim());
   track.append(fill);
+  const name = text('span', 'hud-key', label);
   const value = el('span', 'hud-bar-value');
-  row.append(text('span', 'hud-key', label), track, value);
-  return row;
+  row.append(name, track, value);
+  return { row, label: name, fill, value };
 }
 
-function setBar(fill: HTMLElement, scale: number): void {
-  fill.style.transform = `scaleX(${scale})`;
-  const value = fill.parentElement?.nextElementSibling;
-  if (value) value.textContent = scale.toFixed(2);
+function setBar(bar: BarRow, frac: number, value: string): void {
+  bar.fill.style.transform = `scaleX(${Math.max(0, Math.min(1, frac))})`;
+  setText(bar.value, value);
 }
 
 function replaceItems(list: HTMLElement, items: string[]): void {

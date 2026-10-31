@@ -24,7 +24,9 @@ test('recognises xbox, playstation and switch pads, with their own button names'
   assert.equal(padFamily('Wireless Controller (Vendor: 054c Product: 09cc)'), 'playstation');
   assert.equal(padFamily('Pro Controller (STANDARD GAMEPAD Vendor: 057e Product: 2009)'), 'switch');
   assert.equal(padFamily('8BitDo SN30 Pro'), 'generic');
-  assert.deepEqual(padLabels('playstation'), { attack: '□', evade: '×', block: 'r1', target: 'l2' });
+  assert.deepEqual(padLabels('playstation'), {
+    attack: '□', evade: '×', block: 'r1', target: 'l2', leftClick: 'l3', rightClick: 'r3',
+  });
   assert.equal(padLabels('generic').attack, 'x');
 });
 
@@ -64,4 +66,6 @@ test('activity and debug buttons', () => {
   const f = readPad(pad({ pressed: [BUTTON.start, BUTTON.dpadRight] }));
   assert.deepEqual([...f.debug].sort(), ['nextString', 'pause']);
   assert.equal(f.active, true);
+  const clicks = readPad(pad({ pressed: [BUTTON.l3, BUTTON.r3] }));
+  assert.deepEqual([...clicks.debug].sort(), ['infinitePerfect', 'slowmo'], 'stick clicks toggle the hud switches');
 });

@@ -113,6 +113,11 @@ export class InputBuffer {
     return undefined;
   }
 
+  /** Presses still waiting to be used, oldest first. Read only; for the debug HUD. */
+  get pending(): readonly BufferedPress[] {
+    return this.presses.filter((p) => !p.consumed && this._now - p.time <= this.cfg.bufferWindow);
+  }
+
   consume(...presses: BufferedPress[]): void {
     for (const p of presses) p.consumed = true;
   }

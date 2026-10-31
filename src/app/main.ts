@@ -60,7 +60,11 @@ async function boot(): Promise<void> {
   const chest = new THREE.Vector3();
   const focus = new THREE.Vector2(0.5, 0.5);
 
-  const overlay = new DebugOverlay(document.body, game, devices);
+  const overlay = new DebugOverlay(document.body, game, devices, () => ({
+    hitAreas: hitboxes.visible,
+    slowmo: game.feel.slowmo,
+    infinitePerfect: game.player.infinitePerfectWindows,
+  }));
   if (import.meta.env.DEV) {
     window.__kira = game;
     window.__kiraFx = fx;
@@ -78,6 +82,16 @@ async function boot(): Promise<void> {
     },
     toggleHitAreas: () => (hitboxes.visible = !hitboxes.visible),
     togglePause: () => (paused = !paused),
+    /** Perfect dodge and block skip their slow-mo, so the effects can be judged at full speed. */
+    toggleSlowmo: () => {
+      game.feel.slowmo = !game.feel.slowmo;
+      toast(game.feel.slowmo ? 'slow-mo on' : 'slow-mo off');
+    },
+    /** Every evade and guard counts as perfect. For testing the spectacle without the timing. */
+    toggleInfinitePerfect: () => {
+      game.player.infinitePerfectWindows = !game.player.infinitePerfectWindows;
+      toast(game.player.infinitePerfectWindows ? 'every dodge and block is perfect' : 'perfect windows back to normal');
+    },
   };
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
@@ -87,6 +101,8 @@ async function boot(): Promise<void> {
     if (digit) game.dummyAI.select(digit[1] === '0' ? 'cycle' : Number(digit[1]) - 1);
     if (e.code === 'KeyV') debug.toggleHitAreas();
     if (e.code === 'KeyP') debug.togglePause();
+    if (e.code === 'KeyN') debug.toggleSlowmo();
+    if (e.code === 'KeyI') debug.toggleInfinitePerfect();
     if (e.code === 'KeyM') sound.toggleMute();
     if (e.code === 'Tab') {
       e.preventDefault();
@@ -99,6 +115,8 @@ async function boot(): Promise<void> {
     else if (d === 'nextString') debug.stepString(1);
     else if (d === 'hitAreas') debug.toggleHitAreas();
     else if (d === 'pause') debug.togglePause();
+    else if (d === 'slowmo') debug.toggleSlowmo();
+    else if (d === 'infinitePerfect') debug.toggleInfinitePerfect();
     else if (d === 'overlay') overlay.toggle();
   };
   devices.gamepad.onConnection = ({ connected, family }) =>

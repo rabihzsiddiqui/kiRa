@@ -71,6 +71,7 @@ const isCounter = (a: AttackId) => a === AttackId.PhantomDash || a === AttackId.
 export class CombatFeel {
   private unsubs: Array<() => void> = [];
   private wasSlow = false;
+  private _slowmo = true;
 
   constructor(
     events: EventBus<PlayerEvents>,
@@ -80,18 +81,18 @@ export class CombatFeel {
   ) {
     this.unsubs.push(
       events.on('perfectDodge', ({ from, dir }) => {
-        this.time.request(this.tuning.perfectDodgeSlowmo);
+        this.slow(this.tuning.perfectDodgeSlowmo);
         this.fx.cue('perfectDodge', { at: from, dir });
       }),
       events.on('perfectBlock', ({ from, chain }) => {
         this.time.hitStop(this.tuning.perfectBlockHitStop);
-        this.time.request(this.tuning.perfectBlockSlowmo);
+        this.slow(this.tuning.perfectBlockSlowmo);
         this.fx.cue('perfectBlock', { at: from, chain });
       }),
       events.on('attackStarted', ({ attack }) => {
         if (attack === AttackId.PhantomDash || attack === AttackId.Overpower) {
           this.time.clear();
-          this.time.request(this.tuning.counterRelease);
+          this.slow(this.tuning.counterRelease);
           this.fx.cue(attack === AttackId.PhantomDash ? 'counter.phantomDash' : 'counter.overpower', {});
         }
       }),
@@ -105,6 +106,24 @@ export class CombatFeel {
         this.fx.cue('player.hurt', { at: from });
       }),
     );
+  }
+
+  /**
+   * Debug switch. Off: perfect dodges, perfect blocks and counters skip their slow-mo
+   * (hit stops stay, they are part of contact). Cues still fire, so the effects can be
+   * judged at full speed. Turning it off mid slow-mo releases the clocks right away.
+   */
+  get slowmo(): boolean {
+    return this._slowmo;
+  }
+
+  set slowmo(on: boolean) {
+    this._slowmo = on;
+    if (!on) this.time.clear();
+  }
+
+  private slow(req: TimeRequest): void {
+    if (this._slowmo) this.time.request(req);
   }
 
   /** Her hits come from the combat module, not the player FSM, so they arrive on their own bus. */

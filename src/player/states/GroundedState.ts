@@ -1,7 +1,7 @@
 import { dot, length, rightOf, scale } from '../../core/math';
 import { Action } from '../../input/actions';
 import { PlayerStateId, type PlayerContext, type PlayerState } from '../contracts';
-import { commitIntent, moveVector, readIntent, steerFacing } from './shared';
+import { commitIntent, freeRunSpeed, moveVector, readIntent, steerFacing } from './shared';
 
 /**
  * Idle / Run / Strafe as one state. They share every exit, and differ only in
@@ -43,7 +43,7 @@ export class GroundedState implements PlayerState {
       ctx.animator.setFloat('strafeY', dot(move, motor.facing));
     } else {
       // Free run: travel along facing so turns arc instead of sliding.
-      const speed = mag >= tuning.dirDeadzone ? tuning.runSpeed * mag : 0;
+      const speed = freeRunSpeed(ctx, mag);
       motor.setPlanarVelocity(scale(motor.facing, speed));
       ctx.animator.setFloat('locomotion', speed > 0 ? 1 : 0);
       ctx.animator.setFloat('speed', speed);

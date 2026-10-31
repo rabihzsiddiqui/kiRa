@@ -54,6 +54,11 @@ export function moveVector(ctx: PlayerContext): Vec2 {
   return clampLength(stickToWorld(ctx.input.stick, ctx.camera), 1);
 }
 
+/** Free-run speed for a stick of length `mag`: run speed past the deadzone, else 0. */
+export function freeRunSpeed(ctx: PlayerContext, mag: number): number {
+  return mag >= ctx.tuning.dirDeadzone ? ctx.tuning.runSpeed * mag : 0;
+}
+
 /** Locked: face the target. Free: face the stick (if pushed). */
 export function steerFacing(ctx: PlayerContext, move: Vec2, dt: number): void {
   const toTarget = ctx.targeting.isLocked ? ctx.targeting.directionToTarget() : null;

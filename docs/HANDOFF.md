@@ -1,8 +1,8 @@
 # Handoff: what to build next
 
-The gameplay core is done and tested: input buffer, intent resolver, player FSM, hit resolution, perfect dodge/block, time scaling, targeting, and a reference motor. `npm run check` passes 26 scenario tests.
+The gameplay core is done and tested: input buffer, intent resolver, player FSM, hit resolution, perfect dodge/block, time scaling, targeting, and a reference motor. `npm run check` passes 102 tests.
 
-Phases 1 to 6 are done. `npm run dev` runs the browser sandbox.
+Phases 1 to 7 are done. `npm run dev` runs the browser sandbox.
 
 Everything below is the presentation and world layer. Work the phases in order. Each one ends playable.
 
@@ -148,6 +148,16 @@ Dark, minimal overlay (indigo/cyan accents):
 - Perfect windows as live bars (dodge, block)
 - Time scales (world / player)
 - Toggles: hitbox view, slow-mo off, infinite perfect window (for testing VFX)
+
+**Status: done.** Notes:
+- Two panels (`src/app/DebugOverlay.ts`), `tab` or pad back hides both. Left is live state: FSM state, time in state, the move (attack + phase + combo step, or evade + its clock), input buffer, perfect windows, clocks, toggles. Right is the logs (transitions, combat, fx cues) and the controls for the active device.
+- Everything the HUD shows comes from core readouts, tested headless in `test/debugHud.test.ts`: `InputBuffer.pending` (waiting presses), `PlayerController.attack` and `PlayerController.perfectWindows()` (time left in each window, 0..1, plus a flag when mashing voided the block window).
+- Buffer bars show how much of the 0.2 s window each waiting press has left. A press that fires on the frame it lands never shows up; that is the point, only presses held over (mid-roll, mid-slash) appear.
+- Perfect window bars are not eased, so you can see how short 9 frames is. `mash` on the block row means the anti-mash lockout ate the window.
+- Toggles: `V` / d-pad down hit areas, `N` / left stick click slow-mo, `I` / right stick click infinite perfect window. Slow-mo off (`CombatFeel.slowmo`) skips the perfect dodge, perfect block and counter slow-mo but keeps hit stops and every cue. Infinite perfect (`PlayerController.infinitePerfectWindows`) makes every evade and guard perfect, and puts the tuned windows back when turned off.
+
+### Movement notes
+- The traversal roll (any roll, since rolls only happen unlocked) eases into the run speed the stick is asking for instead of stopping, so rolling while running keeps her momentum. With the stick released it still eases to a stop. Side hops and backflips (locked on) still stop so landings don't skate.
 
 ---
 

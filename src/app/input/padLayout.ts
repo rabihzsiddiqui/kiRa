@@ -30,6 +30,8 @@ export const BUTTON = {
   rt: 7,
   back: 8,
   start: 9,
+  l3: 10, // left stick click
+  r3: 11,
   dpadUp: 12,
   dpadDown: 13,
   dpadLeft: 14,
@@ -47,7 +49,15 @@ const ACTIONS: ReadonlyArray<[number, Action]> = [
 ];
 
 /** Sandbox debug controls on the pad (keyboard has its own keys). */
-export type PadDebug = 'pause' | 'overlay' | 'ai' | 'prevString' | 'nextString' | 'hitAreas';
+export type PadDebug =
+  | 'pause'
+  | 'overlay'
+  | 'ai'
+  | 'prevString'
+  | 'nextString'
+  | 'hitAreas'
+  | 'slowmo'
+  | 'infinitePerfect';
 const DEBUG: ReadonlyArray<[number, PadDebug]> = [
   [BUTTON.start, 'pause'],
   [BUTTON.back, 'overlay'],
@@ -55,6 +65,8 @@ const DEBUG: ReadonlyArray<[number, PadDebug]> = [
   [BUTTON.dpadLeft, 'prevString'],
   [BUTTON.dpadRight, 'nextString'],
   [BUTTON.dpadDown, 'hitAreas'],
+  [BUTTON.l3, 'slowmo'],
+  [BUTTON.r3, 'infinitePerfect'],
 ];
 
 export const STICK_DEADZONE = 0.15;
@@ -73,16 +85,19 @@ export interface PadLabels {
   evade: string;
   block: string;
   target: string;
+  /** Stick clicks, for the debug toggles. */
+  leftClick: string;
+  rightClick: string;
 }
 
 export function padLabels(family: PadFamily): PadLabels {
   switch (family) {
     case 'playstation':
-      return { attack: '□', evade: '×', block: 'r1', target: 'l2' };
+      return { attack: '□', evade: '×', block: 'r1', target: 'l2', leftClick: 'l3', rightClick: 'r3' };
     case 'switch':
-      return { attack: 'y', evade: 'b', block: 'r', target: 'zl' };
+      return { attack: 'y', evade: 'b', block: 'r', target: 'zl', leftClick: 'ls', rightClick: 'rs' };
     default:
-      return { attack: 'x', evade: 'a', block: 'rb', target: 'lt' };
+      return { attack: 'x', evade: 'a', block: 'rb', target: 'lt', leftClick: 'ls', rightClick: 'rs' };
   }
 }
 
