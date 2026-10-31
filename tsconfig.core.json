@@ -1,0 +1,21 @@
+{
+  "//": "Type-checks the gameplay core with no DOM types, so any browser API use fails here. See CLAUDE.md hard rule 1.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"]
+  },
+  "include": [
+    "src/core",
+    "src/input",
+    "src/targeting",
+    "src/combat",
+    "src/fsm",
+    "src/player",
+    "src/feel",
+    "src/sandbox",
+    "src/camera",
+    "src/enemies",
+    "src/physics/SimpleMotor.ts",
+    "src/physics/space.ts"
+  ]
+}
