@@ -161,12 +161,12 @@ A combo is up to `maxCombo` (4) swings. Repeating an input never repeats the sam
 
 | Family | Opener | Next swing, blade on her right | Next swing, blade on her left | 4th hit (ender) |
 |---|---|---|---|---|
-| Horizontal | Horizontal (forehand) | Horizontal | Reverse horizontal (backhand) | Spin: one full-turn cut |
-| Reverse | Reverse horizontal | Horizontal | Reverse horizontal | Rising: diagonal cut up and through, with a hop |
+| Horizontal | Horizontal (forehand) | Horizontal | Reverse horizontal (backhand) | Rising: diagonal cut up and through, with a hop |
+| Reverse | Reverse horizontal | Horizontal | Reverse horizontal | Spin: one full-turn cut |
 | Vertical | Vertical `/` | Vertical `/` | Vertical left `\` | Cleave: leaping two-handed overhead, lands on one knee |
 | Thrust | Thrust (right hip) | Thrust | Thrust left (across the left hip) | Lunge: long driving stab |
 
-So neutral x4 is forehand, backhand, forehand, spin. Forward x4 is `/`, `\`, `/`, cleave. Mixed inputs flow the same way: a forehand ends on her left, so Forward next gives `\` from the left shoulder. Enders have `comboOpen: Infinity`, so a press during one starts a fresh combo once it ends. Letting any swing finish resets the count. `test/combo.test.ts` covers all of it, and `test/slashDirection.test.ts` checks each animation ends on the side its `endSide` claims.
+So neutral x4 is forehand, backhand, forehand, rising cut; right x4 ends in the spin. Forward x4 is `/`, `\`, `/`, cleave. Mixed inputs flow the same way: a forehand ends on her left, so Forward next gives `\` from the left shoulder. Enders have `comboOpen: Infinity`, so a press during one starts a fresh combo once it ends. Letting any swing finish resets the count. `test/combo.test.ts` covers all of it, and `test/slashDirection.test.ts` checks each animation ends on the side its `endSide` claims.
 
 ---
 

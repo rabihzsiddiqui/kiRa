@@ -153,13 +153,64 @@ export function legIK(to: readonly [number, number, number]): { thigh: [number, 
 }
 
 /**
- * Arm IK: upper arm and forearm angles that put the wrist at `to`, relative to the shoulder
- * joint in the shoulder bone's frame. An elbow bends forward, a knee back: so it's the leg
- * solution for the target mirrored front to back, mirrored back (pitch and bend flip sign,
- * the roll is unchanged by that mirror).
+ * Arm IK: upper arm and forearm angles (degrees, clip conventions) that put the wrist at
+ * `to`, relative to the shoulder joint in the shoulder bone's frame. The elbow bends
+ * forward and points toward `pole` (same frame) as far as the reach allows: out and down,
+ * away from her body, so an arm reaching across her doesn't fold into her chest.
+ *
+ * How: the elbow is placed on the circle the two lengths allow, on the pole's side; the
+ * upper arm then points at it (its -Y), with its X the elbow hinge (the forearm folds
+ * toward its -Z); the angles are read back off that frame (Euler YXZ).
  */
-export function armIK(to: readonly [number, number, number]): { upperArm: [number, number, number]; forearm: [number, number, number] } {
-  const { pitch, roll, bend } = twoBone([to[0], to[1], -to[2]], UPPER_ARM, FOREARM);
+export function armIK(
+  to: readonly [number, number, number],
+  pole: readonly [number, number, number] = [-1, -0.3, 0.3],
+): { upperArm: [number, number, number]; forearm: [number, number, number] } {
+  const a = UPPER_ARM;
+  const b = FOREARM;
+  const len = Math.hypot(to[0], to[1], to[2]) || 1e-6;
+  const d = Math.min(a + b - 1e-4, Math.max(Math.abs(a - b) + 0.05, len));
+  const u: V3 = [to[0] / len, to[1] / len, to[2] / len];
+  const dot = (x: V3, y: readonly number[]) => x[0] * y[0] + x[1] * y[1] + x[2] * y[2];
+  const norm = (x: V3): V3 => {
+    const l = Math.hypot(x[0], x[1], x[2]) || 1;
+    return [x[0] / l, x[1] / l, x[2] / l];
+  };
+  // The pole, square to the reach.
+  const pu = dot(u, pole);
+  let side: V3 = [pole[0] - pu * u[0], pole[1] - pu * u[1], pole[2] - pu * u[2]];
+  if (Math.hypot(...side) < 1e-6) side = [0, 0, 1];
+  side = norm(side);
+  const cosA = Math.max(-1, Math.min(1, (a * a + d * d - b * b) / (2 * a * d)));
+  const sinA = Math.sqrt(1 - cosA * cosA);
+  const e: V3 = [u[0] * cosA + side[0] * sinA, u[1] * cosA + side[1] * sinA, u[2] * cosA + side[2] * sinA];
+  const f = norm([u[0] * d - e[0] * a, u[1] * d - e[1] * a, u[2] * d - e[2] * a]);
+  // Upper arm frame: -Y along the upper arm, the forearm folding toward -Z.
+  const y: V3 = [-e[0], -e[1], -e[2]];
+  const fe = dot(f, e);
+  let fold: V3 = [f[0] - fe * e[0], f[1] - fe * e[1], f[2] - fe * e[2]];
+  if (Math.hypot(...fold) < 1e-6) fold = [-side[0], -side[1], -side[2]]; // straight arm: any hinge square to it
+  const z = norm([-fold[0], -fold[1], -fold[2]]);
+  const x: V3 = [y[1] * z[2] - y[2] * z[1], y[2] * z[0] - y[0] * z[2], y[0] * z[1] - y[1] * z[0]];
+  // Euler YXZ off the matrix [x y z] (columns): see rotation() above.
   const deg = (r: number) => r / DEG;
-  return { upperArm: [-deg(pitch), 0, deg(roll)], forearm: [-deg(bend), 0, 0] };
+  const rx = Math.asin(Math.max(-1, Math.min(1, -z[1])));
+  const ry = Math.atan2(z[0], z[2]);
+  const rz = Math.atan2(x[1], y[1]);
+  const bend = Math.acos(Math.max(-1, Math.min(1, fe)));
+  return { upperArm: [deg(rx), deg(ry), deg(rz)], forearm: [deg(bend), 0, 0] };
+}
+
+/**
+ * The local Euler (degrees, YXZ, clip conventions) that gives a bone the world rotation
+ * `world`, under a parent whose world rotation is `parent` (row-major, as jointFrames).
+ */
+export function localEuler(parent: readonly number[], world: readonly number[]): [number, number, number] {
+  // local = parent^T * world
+  const m = new Array<number>(9);
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) m[r * 3 + c] = parent[r] * world[c] + parent[3 + r] * world[3 + c] + parent[6 + r] * world[6 + c];
+  }
+  const x = Math.asin(Math.max(-1, Math.min(1, -m[5])));
+  return [x / DEG, Math.atan2(m[2], m[8]) / DEG, Math.atan2(m[3], m[4]) / DEG];
 }

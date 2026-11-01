@@ -35,12 +35,12 @@ function locked() {
 
 const N = {}; // neutral stick
 
-test('horizontal combo: forehand, backhand, forehand, then the spinning ender', () => {
+test('horizontal combo: forehand, backhand, forehand, then the rising ender', () => {
   assert.deepEqual(chain(new HeadlessSandbox(), [N, N, N, N]), [
     AttackId.Horizontal,
     AttackId.ReverseHorizontal,
     AttackId.Horizontal,
-    AttackId.FinisherSpin,
+    AttackId.FinisherRising,
   ]);
 });
 
@@ -54,13 +54,13 @@ test('vertical combo goes /, \\, / then the leaping cleave', () => {
   ]);
 });
 
-test('right combo opens with the backhand and ends with the rising cut', () => {
+test('right combo opens with the backhand and ends with the spinning cut', () => {
   const r = { stick: RIGHT };
   assert.deepEqual(chain(new HeadlessSandbox(), [r, r, r, r]), [
     AttackId.ReverseHorizontal,
     AttackId.Horizontal,
     AttackId.ReverseHorizontal,
-    AttackId.FinisherRising,
+    AttackId.FinisherSpin,
   ]);
 });
 
@@ -77,9 +77,9 @@ test('locked-on thrust combo alternates sides and ends with the lunge', () => {
 
 test('the ender depends on the 4th input, not the first three', () => {
   const cases: Array<[FrameInput, AttackId]> = [
-    [N, AttackId.FinisherSpin],
+    [N, AttackId.FinisherRising],
     [{ stick: FWD }, AttackId.FinisherCleave],
-    [{ stick: RIGHT }, AttackId.FinisherRising],
+    [{ stick: RIGHT }, AttackId.FinisherSpin],
   ];
   for (const [last, ender] of cases) {
     const attacks = chain(new HeadlessSandbox(), [N, N, N, last]);
@@ -101,11 +101,11 @@ test('the ender closes the combo: mashing through it adds no 5th hit, the next p
   // Mashing through the ender (stopping early enough that the last press has left the
   // input buffer by the time the ender is over).
   for (let i = 0; i < 16; i++) sb.step({ attack: i % 4 === 0 });
-  assert.deepEqual(sb.attacks.slice(3), [AttackId.FinisherSpin]);
-  assert.equal(sb.player.attack?.attack, AttackId.FinisherSpin, 'still in the ender');
+  assert.deepEqual(sb.attacks.slice(3), [AttackId.FinisherRising]);
+  assert.equal(sb.player.attack?.attack, AttackId.FinisherRising, 'still in the ender');
 
   sb.run(40);
-  assert.deepEqual(sb.attacks.slice(3), [AttackId.FinisherSpin], 'no 5th hit');
+  assert.deepEqual(sb.attacks.slice(3), [AttackId.FinisherRising], 'no 5th hit');
   sb.step({ attack: true });
   assert.equal(sb.attacks.at(-1), AttackId.Horizontal, 'fresh opener');
 });

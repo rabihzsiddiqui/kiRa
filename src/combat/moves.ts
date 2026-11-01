@@ -28,9 +28,9 @@ export enum AttackId {
   Overpower = 'overpower',
 
   // Combo enders: the 4th hit of a combo, picked by the input of that 4th press.
-  /** Horizontal input: a full-turn spinning cut. */
+  /** Right input: a full-turn spinning cut. */
   FinisherSpin = 'finisher_spin',
-  /** Right input: rising diagonal cut with a hop. */
+  /** Horizontal input (neutral, left): rising diagonal cut with a hop. */
   FinisherRising = 'finisher_rising',
   /** Vertical input: leaping two-handed overhead cleave. */
   FinisherCleave = 'finisher_cleave',
@@ -265,12 +265,12 @@ export const COMBO: Readonly<Record<SwingFamily, ComboFamily>> = {
   [SwingFamily.Horizontal]: {
     opener: AttackId.Horizontal,
     from: { right: AttackId.Horizontal, left: AttackId.ReverseHorizontal },
-    finisher: AttackId.FinisherSpin,
+    finisher: AttackId.FinisherRising,
   },
   [SwingFamily.Reverse]: {
     opener: AttackId.ReverseHorizontal,
     from: { right: AttackId.Horizontal, left: AttackId.ReverseHorizontal },
-    finisher: AttackId.FinisherRising,
+    finisher: AttackId.FinisherSpin,
   },
   [SwingFamily.Vertical]: {
     opener: AttackId.Vertical,

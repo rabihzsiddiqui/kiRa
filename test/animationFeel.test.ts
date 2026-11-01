@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ATTACKS, attackDuration, AttackId } from '../src/combat/moves';
 import { CLIPS, LOCOMOTION, LOCOMOTION_CLIPS, locomotionWeights, type ClipDef } from '../src/character/clips';
+import { GRIP_RADIUS, KNUCKLES } from '../src/character/bodyFit';
 import { ANKLE, armIK, jointFrames, legIK } from '../src/character/fk';
 import { BONE_IDS } from '../src/character/rig';
 import { vec2 } from '../src/core/math';
@@ -58,6 +59,29 @@ test('charging a spin on the move takes small steps: the planted foot never slid
   // Charging in place: both feet flat on the floor.
   const f = jointFrames(C.charge.sample(0));
   for (const foot of ['footL', 'footR'] as const) assert.ok(Math.abs(f[foot].p[1] - ANKLE) < 1e-3, `${foot} on the floor`);
+});
+
+test('blocking on the move takes small steps too: the planted foot never slides', () => {
+  const C = LOCOMOTION_CLIPS;
+  for (const [clip, dx, dy] of [[C.guardF, 0, 1], [C.guardB, 0, -1], [C.guardL, -1, 0], [C.guardR, 1, 0]] as const) {
+    const { slip, grounded } = footSlip(clip, dx, dy, T.guardMoveSpeed);
+    assert.ok(slip < 0.05, `${clip.name}: foot slides at ${slip.toFixed(2)} m/s`);
+    assert.ok(grounded > 0.95, `${clip.name}: a foot is always down`);
+  }
+  // The guard itself doesn't move while she steps: hands stay on the grip, braced.
+  const [still, step] = [jointFrames(C.guard.sample(0)), jointFrames(C.guardF.sample(0.2))];
+  assert.ok(Math.hypot(...step.handL.p.map((v, k) => v - step.handR.p[k])) < 0.15, 'both hands on the grip');
+  assert.ok(Math.abs(step.handR.p[1] - still.handR.p[1]) < 0.05, 'the guard stays up');
+});
+
+test('blocking asks for the guard stepping blend, in the direction she is moving', () => {
+  const sb = new HeadlessSandbox();
+  sb.run(5, { block: true });
+  assert.equal(sb.player.state, PlayerStateId.Guard);
+  assert.equal(sb.anim.clip, LOCOMOTION);
+  assert.equal(sb.anim.params.get('locomotion'), 4);
+  sb.run(5, { block: true, stick: vec2(1, 0) });
+  assert.ok((sb.anim.params.get('strafeX') ?? 0) > 0.5 || (sb.anim.params.get('strafeY') ?? 0) > 0.5, 'stepping the way she moves');
 });
 
 test('strafing: planted feet stay put forward and back; sideways they slide far less than a glide', () => {
@@ -196,5 +220,75 @@ test('the parry is the block pushed out: same planted feet, both hands on the gr
     assert.ok(Math.hypot(...push.handL.p.map((v, k) => v - push.handR.p[k])) < 0.15, `${name}: left hand on the grip`);
     const settled = jointFrames(clip.sample(clip.duration));
     assert.ok(Math.abs(settled.handR.p[2] - guard.handR.p[2]) < 1e-6, `${name}: back into the guard`);
+  }
+});
+
+test('cuts from her right across to her left are two-handed; the backhands coming back are not', () => {
+  /** Left wrist to the grip just below the right hand (m), at time t. */
+  const gap = (anim: string, t: number) => {
+    const f = jointFrames(CLIPS.get(anim)!.sample(t));
+    const r = f.handR.r;
+    const grip = [0, 1, 2].map((k) => f.handR.p[k] + r[k * 3 + 2] * 0.09);
+    return Math.hypot(...grip.map((v, k) => v - f.handL.p[k]));
+  };
+  for (const id of [AttackId.Horizontal, AttackId.Vertical]) {
+    const d = ATTACKS[id];
+    // Wind-up, the cut and the follow-through: both hands on the sword.
+    for (let t = 0; t <= d.startup + d.active + d.recovery * 0.35; t += 1 / 60) {
+      assert.ok(gap(d.anim, t) < 0.04, `${id}: left hand ${gap(d.anim, t).toFixed(3)} m off the grip at ${t.toFixed(2)} s`);
+    }
+    assert.ok(gap(d.anim, attackDuration(d)) > 0.2, `${id}: lets go as she settles back to ready`);
+  }
+  for (const id of [AttackId.ReverseHorizontal, AttackId.VerticalLeft]) {
+    const d = ATTACKS[id];
+    assert.ok(gap(d.anim, d.startup + d.active) > 0.2, `${id}: a one-handed backhand`);
+  }
+});
+
+test('flat cuts are driven from the ground: feet planted, hips turning, weight moving, heel pivoting', () => {
+  for (const [id, turn, pivot] of [[AttackId.Horizontal, 1, 'footR'], [AttackId.ReverseHorizontal, -1, 'footL']] as const) {
+    const d = ATTACKS[id];
+    const clip = CLIPS.get(d.anim)!;
+    const start = jointFrames(clip.sample(0));
+    const hit = d.startup + d.active;
+    let moved = 0;
+    for (let t = 0; t <= hit + d.recovery * 0.4; t += 1 / 60) {
+      const f = jointFrames(clip.sample(t));
+      for (const foot of ['footL', 'footR'] as const) moved = Math.max(moved, Math.hypot(f[foot].p[0] - start[foot].p[0], f[foot].p[2] - start[foot].p[2]));
+    }
+    assert.ok(moved < 0.01, `${id}: feet stay planted (moved ${(moved * 100).toFixed(1)} cm)`);
+    const yaw = (t: number) => clip.sample(t).bones.hips?.[1] ?? 0;
+    assert.ok(turn * (yaw(hit) - yaw(0)) > 40, `${id}: hips unwind through the cut (${yaw(0).toFixed(0)} -> ${yaw(hit).toFixed(0)})`);
+    const hipsZ = (t: number) => clip.sample(t).hipsZ ?? 0;
+    assert.ok(Math.abs(hipsZ(hit) - hipsZ(0)) > 0.04, `${id}: weight moves between the feet`);
+    // The pivot foot's heel up: its toe lower than its heel compared with standing flat.
+    const heelUp = (t: number) => (clip.sample(t).bones[pivot]?.[0] ?? 0) - (clip.sample(0).bones[pivot]?.[0] ?? 0);
+    assert.ok(heelUp(hit) > 10, `${id}: ${pivot} heel comes up as she pivots`);
+  }
+});
+
+test('the left fist closes on the handle itself, below the right hand, not past it', () => {
+  const holds: Array<[string, number[]]> = [
+    ['guard_raise', [1]],
+    ['pb_clash_a', [0.1]],
+    ['pb_clash_b', [0.1]],
+    ['atk_horizontal', [0, 0.12, 0.15, 0.2]],
+    ['atk_vertical', [0, 0.15, 0.22]],
+  ];
+  const at = (f: ReturnType<typeof jointFrames>, hand: 'handL' | 'handR', local: number[]) =>
+    [0, 1, 2].map((k) => f[hand].p[k] + f[hand].r[k * 3] * local[0] + f[hand].r[k * 3 + 1] * local[1] + f[hand].r[k * 3 + 2] * local[2]);
+  for (const [name, times] of holds) {
+    for (const t of times) {
+      const f = jointFrames(CLIPS.get(name)!.sample(t));
+      // The sword's axis: through the right fist, along the right hand's Z. Fists curl mirror-wise.
+      const origin = at(f, 'handR', [-GRIP_RADIUS, -KNUCKLES, 0]);
+      const axis = [2, 5, 8].map((i) => f.handR.r[i]);
+      const fist = at(f, 'handL', [GRIP_RADIUS, -KNUCKLES, 0]);
+      const rel = fist.map((v, k) => v - origin[k]);
+      const along = rel[0] * axis[0] + rel[1] * axis[1] + rel[2] * axis[2];
+      const off = Math.hypot(...rel.map((v, k) => v - along * axis[k]));
+      assert.ok(off < 0.01, `${name} at ${t}: left fist ${(off * 100).toFixed(1)} cm off the handle`);
+      assert.ok(along > 0.06 && along < 0.16, `${name} at ${t}: ${(along * 100).toFixed(1)} cm down the handle`);
+    }
   }
 });

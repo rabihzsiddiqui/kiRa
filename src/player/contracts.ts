@@ -27,7 +27,7 @@ export interface CharacterMotor {
 /** Targeting module: decides IF we are locked and ON WHAT. The FSM only asks. */
 export interface TargetingQuery {
   readonly isLocked: boolean;
-  /** Something targetable is in range and in view (what a lock would pick), locked or not. */
+  /** Something targetable is within range, wherever the camera points (locked or not). */
   readonly targetNearby: boolean;
   /** Unit planar direction from the player to the target, or null if none. */
   directionToTarget(): Vec2 | null;

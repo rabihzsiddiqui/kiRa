@@ -61,15 +61,31 @@ export class TargetingSystem implements TargetingQuery {
   }
 
   /**
-   * What she looks at: the locked target, or else whatever a lock would pick right now
-   * (something targetable in range and in view), so her eyes find it before she locks.
+   * What she looks at: the locked target, or else the nearest enemy within targeting range.
+   * Unlike a lock, it doesn't care where the camera points: she notices what's near her,
+   * and the camera is free to swing round and watch her do it.
    */
   get lookTarget(): Targetable | null {
-    return this.target ?? this.pick();
+    return this.target ?? this.nearest();
   }
 
   get targetNearby(): boolean {
     return this.lookTarget !== null;
+  }
+
+  /** The closest living candidate within acquire range, wherever the camera is looking. */
+  private nearest(): Targetable | null {
+    let best: Targetable | null = null;
+    let bestDist = this.cfg.acquireRange;
+    for (const c of this.candidates()) {
+      if (!c.alive) continue;
+      const d = this.distanceTo(c);
+      if (d <= bestDist) {
+        bestDist = d;
+        best = c;
+      }
+    }
+    return best;
   }
 
   /** True when the button is held but nothing is in range (camera recenters behind her). */

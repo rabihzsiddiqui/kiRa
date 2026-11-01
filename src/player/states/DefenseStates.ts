@@ -4,12 +4,27 @@ import { AttackId } from '../../combat/moves';
 import { PlayerStateId, type Defense, type PlayerContext, type PlayerState } from '../contracts';
 import { commitIntent, moveVector, readIntent, steerFacing, type AttackParams } from './shared';
 
-/** Katana raised. Frontal hits are nullified by PlayerController.receiveHit. */
+/**
+ * Asks the locomotion blend for a mode that steps under a held pose (`locomotion` 3 charge,
+ * 4 guard): the pose standing, small steps the way she's moving (strafeX / strafeY, in her
+ * frame), so she walks instead of gliding.
+ */
+function stepUnder(ctx: PlayerContext, mode: number, move: Vec2): void {
+  ctx.animator.setFloat('locomotion', mode);
+  ctx.animator.setFloat('strafeX', dot(move, rightOf(ctx.motor.facing)));
+  ctx.animator.setFloat('strafeY', dot(move, ctx.motor.facing));
+}
+
+/**
+ * Katana raised. Frontal hits are nullified by PlayerController.receiveHit.
+ * Animation: the locomotion blend in guard mode (4), the braced guard with small steps.
+ */
 export class GuardState implements PlayerState {
   readonly id = PlayerStateId.Guard;
 
-  enter(ctx: PlayerContext, _p: unknown, from: PlayerStateId | null): void {
-    if (from !== PlayerStateId.GuardRecoil) ctx.animator.play('guard_raise', 0.06);
+  enter(ctx: PlayerContext): void {
+    stepUnder(ctx, 4, { x: 0, y: 0 });
+    ctx.animator.play('locomotion', 0.1); // the blend in is the raise
   }
 
   update(ctx: PlayerContext, dt: number) {
@@ -23,6 +38,7 @@ export class GuardState implements PlayerState {
     const move = moveVector(ctx);
     steerFacing(ctx, move, dt);
     ctx.motor.setPlanarVelocity(scale(move, ctx.tuning.guardMoveSpeed));
+    stepUnder(ctx, 4, move);
   }
 
   defense(ctx: PlayerContext): Defense {
@@ -121,9 +137,7 @@ export class SpinChargeState implements PlayerState {
   enter(ctx: PlayerContext): void {
     this.charge = 0;
     this.readyFired = false;
-    ctx.animator.setFloat('locomotion', 3);
-    ctx.animator.setFloat('strafeX', 0);
-    ctx.animator.setFloat('strafeY', 0);
+    stepUnder(ctx, 3, { x: 0, y: 0 });
     ctx.animator.play('locomotion', 0.12);
   }
 
@@ -152,8 +166,6 @@ export class SpinChargeState implements PlayerState {
     const move = moveVector(ctx);
     steerFacing(ctx, move, dt);
     ctx.motor.setPlanarVelocity(scale(move, tuning.chargeMoveSpeed));
-    ctx.animator.setFloat('locomotion', 3);
-    ctx.animator.setFloat('strafeX', dot(move, rightOf(ctx.motor.facing)));
-    ctx.animator.setFloat('strafeY', dot(move, ctx.motor.facing));
+    stepUnder(ctx, 3, move);
   }
 }

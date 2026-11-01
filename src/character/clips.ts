@@ -1,6 +1,6 @@
 import { ATTACKS, attackDuration, AttackId, EVADES, EvadeId, type AttackDef } from '../combat/moves';
 import { DEFAULT_TUNING } from '../player/contracts';
-import { ANKLE, armIK, jointFrames, legIK, onGround } from './fk';
+import { ANKLE, armIK, jointFrames, legIK, localEuler, onGround } from './fk';
 import type { BoneId } from './rig';
 
 /*
@@ -70,22 +70,37 @@ const STANCE: Pose = {
   },
 };
 
+/** How far below the right hand the left takes the grip, along it toward the pommel (m). */
+const SECOND_HAND = 0.1;
+
 /**
- * Her left hand on the sword's grip, just below the right (toward the pommel), by arm IK
- * from where her left shoulder is. For two-handed guards.
+ * Her left hand on the sword's grip, just below the right (toward the pommel). On a katana
+ * both hands wrap the grip from the same side, so the left hand takes the right hand's
+ * rotation turned half round its length: its fist (curled mirror-wise, see bodyFit) then
+ * closes on the same axis. The wrist goes SECOND_HAND down the grip from the right one, by
+ * arm IK from her left shoulder; then the hand is turned to that rotation.
  */
 function bothHands(p: Pose): Pose {
   const f = jointFrames(p);
   const r = f.handR.r;
-  const grip = [0, 0, 0.09]; // along the grip, toward the pommel (the blade runs down -Z)
-  const at = [0, 1, 2].map((k) => f.handR.p[k] + r[k * 3] * grip[0] + r[k * 3 + 1] * grip[1] + r[k * 3 + 2] * grip[2]);
+  const at = [0, 1, 2].map((k) => f.handR.p[k] + r[k * 3 + 2] * SECOND_HAND);
   const joint = f.upperArmL.p;
   const s = f.shoulderL.r; // into the shoulder's frame: transpose of its rotation
   const d = [at[0] - joint[0], at[1] - joint[1], at[2] - joint[2]];
   const local: [number, number, number] = [0, 1, 2].map((k) => s[k] * d[0] + s[3 + k] * d[1] + s[6 + k] * d[2]) as [number, number, number];
   const ik = armIK(local);
-  return { ...p, bones: { ...p.bones, upperArmL: ik.upperArm, forearmL: ik.forearm } };
+  const reached: Pose = { ...p, bones: { ...p.bones, upperArmL: ik.upperArm, forearmL: ik.forearm } };
+  // The right hand's rotation turned half round its own Y: negate its X and Z columns.
+  const want = [-r[0], r[1], -r[2], -r[3], r[4], -r[5], -r[6], r[7], -r[8]];
+  const handL = localEuler(jointFrames(reached).forearmL.r, want);
+  return { ...reached, bones: { ...reached.bones, handL } };
 }
+
+/**
+ * Where the feet go for the fighting stance and the flat cuts: wide, left foot forward and
+ * out, right back and out. Shared, so a cut steps straight out of the lock-on stance.
+ */
+const STANCE_FEET: { L: [number, number]; R: [number, number] } = { L: [-0.2, -0.18], R: [0.22, 0.22] };
 
 /** Where the feet go for the block and the parry: wide and planted, left foot forward. */
 const GUARD_FEET: { L: [number, number]; R: [number, number] } = { L: [-0.18, -0.15], R: [0.2, 0.2] };
@@ -124,11 +139,11 @@ function parry(side: 1 | -1): Pose {
       hipsZ: 0.07,
       bones: {
         spine: [-16, 0, 0],
-        chest: [0, side * 22, 0],
+        chest: [0, side > 0 ? 22 : -30, 0],
         neck: [8, -side * 16, 0],
-        shoulderR: [0, side > 0 ? 40 : -10, 0],
+        shoulderR: [0, side > 0 ? 40 : 0, 0],
         upperArmR: [88, 0, 15],
-        forearmR: [35, 0, 0],
+        forearmR: [side > 0 ? 35 : 45, 0, 0], // less reach out to her right, so the left hand can follow
         handR: [-80, 0, 0],
         shoulderL: [0, side > 0 ? -25 : -40, 0],
       },
@@ -138,6 +153,28 @@ function parry(side: 1 | -1): Pose {
 }
 
 /** Arm out forward with the blade level: the base of every horizontal swing. */
+/**
+ * The sword arm for a two-handed flat cut: elbow bent and the hands in closer than armOut's
+ * one-handed reach, so the left hand can join on the grip (blade still level: 70 + 75 - 145).
+ * Pair it with most of the turn in the torso (armOut's chest yaw) and little at the shoulder:
+ * that keeps the grip within the left arm's reach out to either side.
+ */
+const TWO_HAND = (edgeRoll: number): Partial<Record<BoneId, Euler>> => ({
+  upperArmR: [70, 0, 0],
+  forearmR: [75, 0, 0],
+  handR: [-145, 0, edgeRoll],
+});
+
+/**
+ * The sword arm reaching out in front for the moment of contact. Blade tipped 8 up (80 + 28
+ * - 100): she sinks and crunches into the hit, which would otherwise dip it below level.
+ */
+const THROUGH_ARMS = (edgeRoll: number): Partial<Record<BoneId, Euler>> => ({
+  upperArmR: [80, 0, 0],
+  forearmR: [28, 0, 0],
+  handR: [-100, 0, edgeRoll],
+});
+
 /** Forearm roll that puts the edge first: right-to-left swings, and left-to-right. */
 const FOREHAND = -90;
 const BACKHAND = 90;
@@ -270,11 +307,13 @@ const CHARGE: Pose = onGround({
 /** "/" wound up: hand above the right shoulder, blade upright and tipped back. */
 const DIAG_R_WINDUP: Pose = onGround({
   bones: {
-    chest: [8, -30, 0],
-    shoulderR: [0, -15, 0],
-    upperArmR: [155, 0, 30],
-    forearmR: [40, 0, 0],
-    handR: [-80, 0, 0],
+    // Both hands up by the right shoulder (two-handed): the torso turns right to bring the
+    // left shoulder round, the elbows stay in.
+    chest: [8, -45, 0],
+    shoulderR: [0, -5, 0],
+    upperArmR: [140, 0, 5],
+    forearmR: [60, 0, 0],
+    handR: [-85, 0, 0],
     upperArmL: [40, 0, -20],
     forearmL: [50, 0, 0],
     thighL: [15, 0, 0],
@@ -599,9 +638,72 @@ function keyed(keys: Array<[number, Pose] | [number, Pose, Ease]>): (t: number) 
 const LEAD: Partial<Record<BoneId, number>> = {
   hips: 0.045, thighL: 0.045, thighR: 0.045, shinL: 0.045, shinR: 0.045, footL: 0.045, footR: 0.045,
   spine: 0.035, chest: 0.025, neck: 0.03, head: 0.03,
-  shoulderR: 0.015, upperArmR: 0.01, forearmR: 0.004,
+  shoulderR: 0.015,
   shoulderL: 0.02, upperArmL: 0.015, forearmL: 0.008,
+  // The sword arm below the shoulder moves as one with the hand: its joints' angles are
+  // balanced to hold the blade's pitch, and offsetting them tips the blade mid-swing.
 };
+
+/**
+ * Cuts from her dominant (right) side across to her left, swung with both hands, as a
+ * katana is: the forehand flat cut and the "/" diagonal. The cuts coming back (left to
+ * right) stay one-handed backhands.
+ */
+const TWO_HANDED = new Set([ATTACKS[AttackId.Horizontal].anim, ATTACKS[AttackId.Vertical].anim]);
+
+/**
+ * The left hand on the grip every frame (arm IK), so it stays there through the whole swing,
+ * then letting go over the end of the recovery as she settles back into her one-handed ready.
+ */
+function twoHanded(clip: ClipDef, def: AttackDef): ClipDef {
+  const { sample, duration } = clip;
+  const letGo = def.startup + def.active + def.recovery * 0.5;
+  return {
+    ...clip,
+    sample: (t) => {
+      const p = sample(t);
+      const w = 1 - span(t, letGo, duration);
+      return w <= 0 ? p : lerpPose(p, bothHands(p), w);
+    },
+  };
+}
+
+/**
+ * Flat cuts are driven from the ground: hips turning, weight moving between the feet, the
+ * knees taking it. `turn` is the hips' yaw (+ = to her left), `forward` how far her weight
+ * is over the front foot (hipsZ), `low` her hip height, heels in degrees (up = pivoting on
+ * the ball of the foot). The feet themselves are placed by plantedLegs.
+ */
+function flatCut(p: Pose, o: { turn: number; forward: number; low: number; heelL?: number; heelR?: number }): Pose {
+  return {
+    ...p,
+    hipsY: o.low,
+    hipsZ: o.forward,
+    bones: { ...p.bones, hips: [0, o.turn, 0], footL: [o.heelL ?? 0, 0, 0], footR: [o.heelR ?? 0, 0, 0] },
+  };
+}
+
+const FLAT_CUTS = new Set([ATTACKS[AttackId.Horizontal].anim, ATTACKS[AttackId.ReverseHorizontal].anim]);
+
+/**
+ * Feet planted on the stance spots every frame (leg IK) while the hips turn and the weight
+ * moves over them, so nothing slides and the legs do the work; the heels lift as authored
+ * (flatCut). Over the end of the recovery the legs ease back to her ready stance.
+ */
+function plantedLegs(clip: ClipDef, def: AttackDef): ClipDef {
+  const { sample, duration } = clip;
+  const letGo = def.startup + def.active + def.recovery * 0.55;
+  return {
+    ...clip,
+    sample: (t) => {
+      const p = sample(t);
+      const w = 1 - span(t, letGo, duration);
+      if (w <= 0) return p;
+      const heel = { L: p.bones.footL?.[0] ?? 0, R: p.bones.footR?.[0] ?? 0 };
+      return lerpPose(p, withFeet(p, STANCE_FEET, heel), w);
+    },
+  };
+}
 
 /**
  * Overlapping action for a clip: each bone plays `LEAD` seconds ahead of the hand. Legs,
@@ -644,7 +746,8 @@ const span = (t: number, t0: number, t1: number) => smooth((t - t0) / (t1 - t0))
 const CRUNCH = 5;
 
 /**
- * A swing from `windup` through `strike`. Wound up from the first frame (the crossfade
+ * A swing from `windup` through `strike` (optionally by way of `through`, the moment of
+ * contact). Wound up from the first frame (the crossfade
  * covers the transition), then:
  *  - anticipation: through the startup it keeps winding a little further, never frozen
  *  - the strike speeds up into contact (ease in), so it snaps instead of floating
@@ -653,19 +756,28 @@ const CRUNCH = 5;
  *  - then it settles back to ready
  * Plus overlap (see whip): the body leads, the arm follows.
  */
-function attackClip(def: AttackDef, windup: Pose, strike: Pose): ClipDef {
+function attackClip(def: AttackDef, windup: Pose, strike: Pose, through?: Pose): ClipDef {
   const { startup: s, active: a, recovery: r } = def;
   const total = attackDuration(def);
   const coil = lerpPose(strike, windup, 1.12);
-  const follow = lerpPose(windup, strike, 1.1);
-  const base = keyed([
-    [0, windup],
-    [s, coil],
-    [s + a, strike, easeIn],
-    [s + a + r * 0.35, follow, easeOut],
-    [total, READY],
-  ]);
-  const hit = s + a;
+  // With `through` (the moment of contact, mid-swing) the swing speeds into it and then
+  // carries on out to the strike pose and a little past, slowing as it goes.
+  const base = through
+    ? keyed([
+        [0, windup],
+        [s, coil],
+        [s + a * 0.5, through, easeIn],
+        [s + a + r * 0.35, lerpPose(through, strike, 1.08), easeOut],
+        [total, READY],
+      ])
+    : keyed([
+        [0, windup],
+        [s, coil],
+        [s + a, strike, easeIn],
+        [s + a + r * 0.35, lerpPose(windup, strike, 1.1), easeOut],
+        [total, READY],
+      ]);
+  const hit = through ? s + a * 0.5 : s + a;
   return {
     name: def.anim,
     duration: total,
@@ -756,9 +868,24 @@ function finisherSpinClip(): ClipDef {
 
 const attackClips: ClipDef[] = ([
   // Forehand: blade sweeps from her right to her left.
-  attackClip(A[AttackId.Horizontal], armOut(-60, -35, {}, FOREHAND), armOut(55, 40, { thighR: [25, 0, 0], shinR: [-20, 0, 0] }, FOREHAND)),
-  // Backhand: left to right.
-  attackClip(A[AttackId.ReverseHorizontal], armOut(70, 35, {}, BACKHAND), armOut(-60, -40, { thighR: [25, 0, 0], shinR: [-20, 0, 0] }, BACKHAND)),
+  // Two-handed (the left hand joins on the grip, see TWO_HANDED): elbows in. Driven from
+  // the ground (see FLAT_CUTS): hips coiled right with her weight back, unwinding left onto
+  // the front foot, the back heel coming up as she pivots through.
+  // At contact (mid-swing) the arms reach out in front, blade level at chest height; they
+  // gather in again either side, where the grip has to stay in the left arm's reach.
+  attackClip(
+    A[AttackId.Horizontal],
+    flatCut(armOut(-8, -32, TWO_HAND(FOREHAND), FOREHAND), { turn: -22, forward: -0.03, low: -0.1 }),
+    flatCut(armOut(8, 28, TWO_HAND(FOREHAND), FOREHAND), { turn: 28, forward: 0.06, low: -0.13, heelR: 28 }),
+    flatCut(armOut(0, 2, THROUGH_ARMS(FOREHAND), FOREHAND), { turn: 4, forward: 0.04, low: -0.13, heelR: 12 }),
+  ),
+  // Backhand: left to right, one-handed. The mirror of that: coiled left over the front
+  // foot, unwinding right with her weight going back, pivoting on the front foot.
+  attackClip(
+    A[AttackId.ReverseHorizontal],
+    flatCut(armOut(70, 19, {}, BACKHAND), { turn: 20, forward: 0.03, low: -0.1 }),
+    flatCut(armOut(-60, -18, {}, BACKHAND), { turn: -28, forward: -0.02, low: -0.12, heelL: 22 }),
+  ),
   // Diagonals: "/" from over the right shoulder, "\" from over the left. A vertical combo alternates them.
   attackClip(A[AttackId.Vertical], DIAG_R_WINDUP, DIAG_R_STRIKE),
   attackClip(A[AttackId.VerticalLeft], DIAG_L_WINDUP, DIAG_L_STRIKE),
@@ -811,7 +938,14 @@ const attackClips: ClipDef[] = ([
     const low = { spine: [-35, 0, 0] as Euler, thighL: [50, 0, 0] as Euler, shinL: [-40, 0, 0] as Euler, thighR: [-40, 0, 0] as Euler, shinR: [-20, 0, 0] as Euler };
     return attackClip(A[AttackId.PhantomDash], { ...armOut(-70, -40, low, FOREHAND), hipsY: -0.15 }, { ...armOut(60, 45, low, FOREHAND), hipsY: -0.15 });
   })(),
-] satisfies ClipDef[]).map(whip);
+] satisfies ClipDef[])
+  .map(whip)
+  .map((c) => {
+    const def = Object.values(ATTACKS).find((a) => a.anim === c.name);
+    if (!def) return c;
+    const legs = FLAT_CUTS.has(c.name) ? plantedLegs(c, def) : c;
+    return TWO_HANDED.has(c.name) ? twoHanded(legs, def) : legs;
+  });
 
 /** Full-body flip: rotation on the hips over [t0, t1], tucked in the middle. */
 function flipClip(name: string, duration: number, rot: Euler, shape: Pose, t0: number, t1: number, hipsDrop = 0): ClipDef {
@@ -1337,15 +1471,18 @@ function idlePose(t: number): Pose {
  * `base` with its feet put on the floor at `feet` (rig space x, z; her forward is -Z), by
  * leg IK from where its hips are. For stances: say where the feet go, get the legs.
  */
-function withFeet(base: Pose, feet: { L: [number, number]; R: [number, number] }): Pose {
+function withFeet(base: Pose, feet: { L: [number, number]; R: [number, number] }, heel?: { L: number; R: number }): Pose {
   const frames = jointFrames(base);
+  const h = frames.hips.r; // the IK works in the hips' frame, which may be turned
   const bones = { ...base.bones };
   for (const side of ['L', 'R'] as const) {
     const hip = frames[`thigh${side}`].p;
-    const ik = legIK([feet[side][0] - hip[0], ANKLE - hip[1], feet[side][1] - hip[2]]);
+    const d = [feet[side][0] - hip[0], ANKLE - hip[1], feet[side][1] - hip[2]];
+    const ik = legIK([0, 1, 2].map((k) => h[k] * d[0] + h[3 + k] * d[1] + h[6 + k] * d[2]) as [number, number, number]);
     bones[`thigh${side}`] = ik.thigh;
     bones[`shin${side}`] = ik.shin;
-    bones[`foot${side}`] = ik.foot;
+    // Flat on the floor, or with the heel up (degrees) to pivot on the ball of the foot.
+    bones[`foot${side}`] = [ik.foot[0] + (heel?.[side] ?? 0), ik.foot[1], ik.foot[2]];
   }
   return { ...base, bones };
 }
@@ -1355,8 +1492,7 @@ function withFeet(base: Pose, feet: { L: [number, number]; R: [number, number] }
  * eyes) on wide, planted feet: left foot forward and out, right foot back and out, hips
  * down, knees bent. Strafing steps from here too.
  */
-/** The fighting stance's feet: wide, left foot forward and out, right back and out. */
-const COMBAT_FEET: { L: [number, number]; R: [number, number] } = { L: [-0.2, -0.18], R: [0.22, 0.22] };
+const COMBAT_FEET = STANCE_FEET;
 
 const COMBAT: Pose = withFeet({ ...STANCE, hipsY: -0.12, bones: { ...STANCE.bones, spine: [-8, 0, 0] } }, COMBAT_FEET);
 
@@ -1407,6 +1543,14 @@ const strafe = (dx: number, dy: number) =>
   dx === 0
     ? stepGait(COMBAT, dx, dy, { speed: T.strafeSpeed, period: STRAFE_PERIOD, lift: 0.09, duty: 0.34 })
     : stepGait(COMBAT, dx, dy, { speed: T.strafeSpeed, period: STRAFE_SIDE_PERIOD, lift: 0.07, maxHalf: 0.12, duty: 0.25 });
+/** Blocking, standing: the braced guard, breathing a little low in her stance. */
+function guardPose(t: number): Pose {
+  const b = Math.sin((t / 2) * Math.PI * 2);
+  return withFeet({ ...GUARD, hipsY: (GUARD.hipsY ?? 0) - 0.006 * (1 + b) }, GUARD_FEET);
+}
+// Blocking on the move: small planted steps under the braced guard (arms and grip unchanged).
+const guardStep = (dx: number, dy: number) =>
+  stepGait(GUARD, dx, dy, { speed: T.guardMoveSpeed, period: dx === 0 ? CHARGE_PERIOD : CHARGE_SIDE_PERIOD, lift: 0.05 });
 // Charging: a walk. Side steps a little quicker, so they stay small.
 const charge = (dx: number, dy: number) =>
   stepGait(CHARGE, dx, dy, { speed: T.chargeMoveSpeed, period: dx === 0 ? CHARGE_PERIOD : CHARGE_SIDE_PERIOD, lift: 0.06 });
@@ -1429,13 +1573,19 @@ export const LOCOMOTION_CLIPS = {
   chargeB: loop('charge_step_b', CHARGE_PERIOD, charge(0, -1)),
   chargeL: loop('charge_step_l', CHARGE_SIDE_PERIOD, charge(-1, 0)),
   chargeR: loop('charge_step_r', CHARGE_SIDE_PERIOD, charge(1, 0)),
+  // Blocking: the guard, and small steps the way she's moving.
+  guard: loop('guard_idle', 2, guardPose),
+  guardF: loop('guard_step_f', CHARGE_PERIOD, guardStep(0, 1)),
+  guardB: loop('guard_step_b', CHARGE_PERIOD, guardStep(0, -1)),
+  guardL: loop('guard_step_l', CHARGE_SIDE_PERIOD, guardStep(-1, 0)),
+  guardR: loop('guard_step_r', CHARGE_SIDE_PERIOD, guardStep(1, 0)),
 } satisfies Record<string, ClipDef>;
 
 /** The FSM asks for 'locomotion'; the animator blends LOCOMOTION_CLIPS by its params. */
 export const LOCOMOTION = 'locomotion';
 
 /** `locomotion` param values. */
-export const LOCO_MODE = { idle: 0, run: 1, strafe: 2, charge: 3 } as const;
+export const LOCO_MODE = { idle: 0, run: 1, strafe: 2, charge: 3, guard: 4 } as const;
 
 export interface LocomotionParams {
   locomotion: number; // LOCO_MODE
@@ -1478,6 +1628,8 @@ export function locomotionWeights(p: LocomotionParams, runSpeed = DEFAULT_TUNING
     directional('stance', 'strafeF', 'strafeB', 'strafeL', 'strafeR');
   } else if (p.locomotion === LOCO_MODE.charge) {
     directional('charge', 'chargeF', 'chargeB', 'chargeL', 'chargeR');
+  } else if (p.locomotion === LOCO_MODE.guard) {
+    directional('guard', 'guardF', 'guardB', 'guardL', 'guardR');
   } else {
     stand(1);
   }

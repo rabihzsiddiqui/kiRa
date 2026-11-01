@@ -70,7 +70,7 @@ test('looks during attacks and side hops; not during spins, rolls, flips', () =>
   assert.ok(!lookAllowed(PlayerStateId.PerfectDodge, null, null));
 });
 
-test('she looks at something targetable in range before locking on, and not at things out of range', () => {
+test('she looks at something targetable in range before locking on, wherever the camera points, and not at things out of range', () => {
   const near = new HeadlessSandbox();
   const enemy = near.addEnemy(2, 5);
   near.run(2);
@@ -80,6 +80,14 @@ test('she looks at something targetable in range before locking on, and not at t
   far.addEnemy(0, 40);
   far.run(2);
   assert.equal(far.targeting.lookTarget, null);
+  // Behind the camera's view (a lock wouldn't pick it): she still notices it, and the
+  // alert idle follows. The camera can swing anywhere to watch.
+  const behind = new HeadlessSandbox();
+  const lurker = behind.addEnemy(0, -5);
+  behind.run(3);
+  assert.equal(behind.targeting.lookTarget, lurker);
+  assert.equal(behind.targeting.targetNearby, true);
+  assert.equal(behind.anim.params.get('alert'), 1);
   // Locked: the lock, even if the camera turns away.
   near.run(2, { target: true });
   near.step({ target: true, stick: vec2(0, 0) });
