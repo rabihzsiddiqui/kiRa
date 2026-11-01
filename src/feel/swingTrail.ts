@@ -10,7 +10,8 @@ import { AttackPhase } from '../player/states/AttackState';
  *   counter   perfect dodge and perfect block counters: cyan, matching the perfect cues
  *
  * The spin attack adds a wave: a circle of energy out at the edge of its (bigger) hit
- * range, swept round with the blade like a trail. See spinWave().
+ * range, swept round with the blade like a trail. It's drawn as energy, not as a blade
+ * trail, in the charge's cyan: the stored charge let out. See spinWave().
  */
 
 export type TrailTier = 'standard' | 'special' | 'counter' | 'wave';
@@ -84,13 +85,14 @@ export interface SpinWave {
   width: number;
 }
 
-const WAVE_STYLE: TrailStyle = { tier: 'wave', core: 0xfffbeb, edge: 0xf59e0b, life: 0.4, base: 0, reach: 0, shimmer: 1, intensity: 2 };
+/** Cyan like the blade charge (BladeCharge), so it reads as that energy let out, not as gold steel. */
+const WAVE_STYLE: TrailStyle = { tier: 'wave', core: 0xecfeff, edge: 0x22d3ee, life: 0.45, base: 0, reach: 0, shimmer: 1, intensity: 1.4 };
 
 /** The wave an attack throws, or null. Only the spin attack has one. */
 export function spinWave(attack: AttackId): SpinWave | null {
   if (attack !== AttackId.Spin && attack !== AttackId.SpinClockwise) return null;
   const hit = ATTACKS[attack].hit;
-  return { style: WAVE_STYLE, radius: hit.range, width: 0.4 };
+  return { style: WAVE_STYLE, radius: hit.range, width: 0.6 };
 }
 
 type P3 = { x: number; y: number; z: number };

@@ -11,10 +11,17 @@ export interface SwordTrailInput {
   emitting: boolean;
 }
 
-const MAX_POINTS = 160;
+/** Enough for the spin's wave: a full 3 m circle at fine angle steps, plus the fading tail. */
+const MAX_POINTS = 320;
+
+/** A trail's two edges at one moment. */
+export interface TrailEdges {
+  base: THREE.Vector3;
+  tip: THREE.Vector3;
+}
 
 /**
- * What a trail follows: its look for a given attack (null = none), and its two edges this
+ * What a trail follows: its style for a given attack (null = none), and its two edges this
  * frame (false = skip the frame). The default follows the blade, hilt side to tip.
  */
 export interface TrailSource {
@@ -22,6 +29,13 @@ export interface TrailSource {
   edges(style: TrailStyle, base: THREE.Vector3, tip: THREE.Vector3): boolean;
   /** Extra points between two frames' samples, so fast swings curve instead of zigzag. */
   subdivide: number;
+  /** How it's shaded: a blade trail, or a band of energy (the spin's wave). */
+  look: 'blade' | 'energy';
+  /**
+   * Optional: lays the in-between points from the last frame's edges to this frame's
+   * itself, instead of the default curve fit.
+   */
+  between?(from: TrailEdges, to: TrailEdges, push: (base: THREE.Vector3, tip: THREE.Vector3) => void): void;
 }
 
 /** The blade, from `base` along it to `reach` past the tip (see TrailStyle). */
@@ -30,6 +44,7 @@ export function bladeSource(sword: SwordLayout): TrailSource {
   return {
     style: trailStyle,
     subdivide: 4,
+    look: 'blade',
     edges: (style, base, tip) => {
       sword.group.localToWorld(hilt.set(0, 0, sword.hiltZ));
       sword.group.localToWorld(tip.set(0, 0, sword.tipZ));
@@ -41,10 +56,17 @@ export function bladeSource(sword: SwordLayout): TrailSource {
   };
 }
 
+/** Angle step (radians) between the wave's in-between points: small enough to look round. */
+const WAVE_STEP = 0.035;
+
 /**
  * The spin's wave (see spinWave in feel/swingTrail.ts): a band out at the edge of the
  * spin's hit range, pointing where the blade points, so it sweeps a circle round her.
  * `center` is her position (feet), world space.
+ *
+ * Between frames it steps around her by angle at a fixed radius, so the band is a true
+ * arc however far the blade turned that frame (a curve fit through 3 m wide steps cuts
+ * corners and looks choppy).
  */
 export function waveSource(sword: SwordLayout, center: () => THREE.Vector3): TrailSource {
   const tipWorld = new THREE.Vector3();
@@ -54,7 +76,28 @@ export function waveSource(sword: SwordLayout, center: () => THREE.Vector3): Tra
       wave = spinWave(attack);
       return wave?.style ?? null;
     },
-    subdivide: 8, // big radius, big steps per frame: more in-betweens keep it round
+    subdivide: 1,
+    look: 'energy',
+    between: (from, to, push) => {
+      const c = center();
+      const angle = (v: THREE.Vector3) => Math.atan2(v.z - c.z, v.x - c.x);
+      const a0 = angle(from.tip);
+      // Shortest way round: a blade never turns half a circle in one frame.
+      const turn = Math.atan2(Math.sin(angle(to.tip) - a0), Math.cos(angle(to.tip) - a0));
+      const steps = Math.ceil(Math.abs(turn) / WAVE_STEP);
+      const at = (e: TrailEdges, u: number, a: number, which: 'base' | 'tip') => {
+        const r0 = Math.hypot(from[which].x - c.x, from[which].z - c.z);
+        const r1 = Math.hypot(e[which].x - c.x, e[which].z - c.z);
+        const r = r0 + (r1 - r0) * u;
+        const y = from[which].y + (e[which].y - from[which].y) * u;
+        return new THREE.Vector3(c.x + Math.cos(a) * r, y, c.z + Math.sin(a) * r);
+      };
+      for (let k = 1; k < steps; k++) {
+        const u = k / steps;
+        const a = a0 + turn * u;
+        push(at(to, u, a, 'base'), at(to, u, a, 'tip'));
+      }
+    },
     edges: (_style, base, tip) => {
       if (!wave) return false;
       sword.group.localToWorld(tipWorld.set(0, 0, sword.tipZ));
@@ -74,6 +117,8 @@ interface TrailPoint {
   life: number;
   /** Which swing laid this point: the ribbon never joins two swings. */
   swing: number;
+  /** Meters along the ribbon's tip edge from where this swing started (energy flows along it). */
+  along: number;
   style: TrailStyle;
 }
 
@@ -85,7 +130,8 @@ interface TrailPoint {
  *
  * Its look comes from the attack's TrailStyle (src/feel/swingTrail.ts): standard swings
  * are a thin, quick indigo arc; enders, spins and the jump attack a wider gold arc with
- * moving bands and glints; counters cyan. Pure presentation, tagged noGhost.
+ * moving bands and glints; counters cyan. A source with the energy look (the spin's wave)
+ * uses ENERGY_FRAG instead. Pure presentation, tagged noGhost.
  */
 export class SwordTrail {
   readonly mesh: THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
@@ -96,6 +142,7 @@ export class SwordTrail {
   private readonly positions = new Float32Array(MAX_POINTS * 2 * 3);
   private readonly params = new Float32Array(MAX_POINTS * 2 * 4); // age 0..1, across 0..1, shimmer, intensity
   private readonly colors = new Float32Array(MAX_POINTS * 2 * 6); // core rgb, edge rgb
+  private readonly along = new Float32Array(MAX_POINTS * 2);
   private swing = 0;
   private lastAttack: AttackId | null = null;
   private wasEmitting = false;
@@ -111,13 +158,14 @@ export class SwordTrail {
     const colors = new THREE.InterleavedBuffer(this.colors, 6).setUsage(THREE.DynamicDrawUsage);
     g.setAttribute('aCore', new THREE.InterleavedBufferAttribute(colors, 3, 0));
     g.setAttribute('aEdge', new THREE.InterleavedBufferAttribute(colors, 3, 3));
+    g.setAttribute('aAlong', new THREE.BufferAttribute(this.along, 1).setUsage(THREE.DynamicDrawUsage));
     g.setIndex(new THREE.BufferAttribute(new Uint16Array((MAX_POINTS - 1) * 6), 1).setUsage(THREE.DynamicDrawUsage));
     g.setDrawRange(0, 0);
 
     const material = new THREE.ShaderMaterial({
       uniforms: { uTime: { value: 0 } },
       vertexShader: VERT,
-      fragmentShader: FRAG,
+      fragmentShader: this.source.look === 'energy' ? ENERGY_FRAG : FRAG,
       transparent: true,
       depthWrite: false,
       side: THREE.DoubleSide,
@@ -163,7 +211,9 @@ export class SwordTrail {
     const SUBDIVIDE = this.source.subdivide;
 
     const h = this.history;
-    if (h.length >= 1) {
+    if (h.length >= 1 && this.source.between) {
+      this.source.between(h[h.length - 1], now, (b, t) => this.push(b, t, style));
+    } else if (h.length >= 1) {
       // Curve through the previous two frames into this one.
       const p0 = h.length >= 2 ? h[h.length - 2] : h[h.length - 1];
       const p1 = h[h.length - 1];
@@ -179,7 +229,9 @@ export class SwordTrail {
 
   private push(base: THREE.Vector3, tip: THREE.Vector3, style: TrailStyle): void {
     if (this.points.length >= MAX_POINTS) this.points.shift();
-    this.points.push({ base, tip, age: 0, life: style.life, swing: this.swing, style });
+    const last = this.points[this.points.length - 1];
+    const along = last && last.swing === this.swing ? last.along + last.tip.distanceTo(tip) : 0;
+    this.points.push({ base, tip, age: 0, life: style.life, swing: this.swing, style, along });
   }
 
   private rebuild(): void {
@@ -191,6 +243,7 @@ export class SwordTrail {
       const age = Math.min(1, p.age / p.life);
       this.positions.set([p.base.x, p.base.y, p.base.z, p.tip.x, p.tip.y, p.tip.z], i * 6);
       this.params.set([age, 0, p.style.shimmer, p.style.intensity, age, 1, p.style.shimmer, p.style.intensity], i * 8);
+      this.along[i * 2] = this.along[i * 2 + 1] = p.along;
       for (let side = 0; side < 2; side++) {
         const o = (i * 2 + side) * 6;
         c.setHex(p.style.core, THREE.SRGBColorSpace);
@@ -210,7 +263,7 @@ export class SwordTrail {
     }
     g.setDrawRange(0, k);
     g.index!.needsUpdate = true;
-    for (const name of ['position', 'aParams'] as const) (g.attributes[name] as THREE.BufferAttribute).needsUpdate = true;
+    for (const name of ['position', 'aParams', 'aAlong'] as const) (g.attributes[name] as THREE.BufferAttribute).needsUpdate = true;
     (g.attributes.aCore as THREE.InterleavedBufferAttribute).data.needsUpdate = true;
     this.mesh.material.uniforms.uTime.value = this.time;
     this.mesh.visible = k > 0;
@@ -232,11 +285,14 @@ const VERT = /* glsl */ `
   attribute vec4 aParams;
   attribute vec3 aCore;
   attribute vec3 aEdge;
+  attribute float aAlong;
   varying vec4 vParams;
   varying vec3 vCore;
   varying vec3 vEdge;
+  varying float vAlong;
   void main() {
     vParams = aParams;
+    vAlong = aAlong;
     vCore = aCore;
     vEdge = aEdge;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
@@ -269,6 +325,63 @@ const FRAG = /* glsl */ `
     alpha *= mix(1.0, bands, shimmer);
     color += shimmer * glint * 1.5 * vCore;
     // Additive: keep it finite and non-negative whatever happens above.
+    gl_FragColor = vec4(clamp(color * intensity, 0.0, 8.0), clamp(alpha, 0.0, 1.0));
+  }
+`;
+
+/**
+ * The spin's wave: a band of energy, not a blade trail. Across the band (0 inner, 1 outer)
+ * there's a soft glow that fades out on both sides and a hot rim near the outer edge (the
+ * edge of the hit range). Noise flows along the ring (vAlong, meters) and churns over
+ * time, with thin bright filaments in it. The newest part flares white; as it ages it
+ * breaks up into the noise and burns out, rather than fading evenly like steel's trail.
+ */
+const ENERGY_FRAG = /* glsl */ `
+  uniform float uTime;
+  varying vec4 vParams;
+  varying vec3 vCore;
+  varying vec3 vEdge;
+  varying float vAlong;
+
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+  }
+  float fbm(vec2 p) {
+    return 0.55 * noise(p) + 0.3 * noise(p * 2.1 + 3.1) + 0.15 * noise(p * 4.3 + 7.7);
+  }
+
+  void main() {
+    // Clamped for the same reason as the blade trail: no NaN may reach the bloom.
+    float age = clamp(vParams.x, 0.0, 1.0);
+    float across = clamp(vParams.y, 0.0, 1.0);
+    float intensity = max(vParams.w, 0.0);
+    // vAlong only grows within a swing; wrap it so sin() in hash() stays precise.
+    float along = mod(vAlong, 64.0);
+
+    float flow = fbm(vec2(along * 1.2 - uTime * 3.0, across * 2.0 + uTime * 1.4));
+    // Streaks: stretched along the ring, fine across it, so they read as energy running round.
+    float wisp = fbm(vec2(along * 0.9 + uTime * 4.0, across * 10.0 - uTime * 1.5));
+    float filament = pow(clamp(1.0 - abs(wisp - 0.5) * 5.0, 0.0, 1.0), 2.0);
+
+    // The rim wavers with the flow; the glow fades out toward both sides of the band.
+    float rimAt = 0.8 + (flow - 0.5) * 0.1;
+    float rim = exp(-pow((across - rimAt) / 0.07, 2.0));
+    float glow = smoothstep(0.0, 0.6, across) * (1.0 - smoothstep(0.86, 1.0, across));
+
+    // Newest energy flares; older energy breaks up and burns out.
+    float head = exp(-age * 20.0);
+    float burn = smoothstep(age - 0.25, age + 0.05, flow);
+    float fade = pow(1.0 - age, 1.2);
+
+    float alpha = (glow * (0.18 + 0.4 * flow) + rim * (0.55 + 0.45 * flow) + filament * glow * 0.6) * burn * fade;
+    alpha += head * (glow * 0.25 + rim * 0.5);
+    vec3 color = mix(vEdge, vCore, clamp(rim * 0.7 + filament * 0.5 + head * 0.6, 0.0, 1.0));
     gl_FragColor = vec4(clamp(color * intensity, 0.0, 8.0), clamp(alpha, 0.0, 1.0));
   }
 `;
