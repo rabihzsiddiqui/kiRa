@@ -5,7 +5,7 @@ import { ARENA } from '../src/app/arena';
 import { DEFAULT_STAGE, initialStage, parseStage, STAGES, type StageId } from '../src/app/stages';
 import { planarTo3 } from '../src/physics/space';
 import { STAGE_BUILDERS } from '../src/render/stages';
-import { FLAT_RADIUS, scatterTrees, terrainHeight } from '../src/render/stages/terrain';
+import { FLAT_RADIUS, scatterTrees, terrainHeight, terrainMesh } from '../src/render/stages/terrain';
 
 /*
  * Stages change the look only. These check the choice logic and that every stage draws
@@ -97,6 +97,22 @@ test('grounds: the land is flat round the yard, trees stay outside the walls', (
   for (const t of scatterTrees(300, 5, 25, 170)) {
     assert.ok(Math.max(Math.abs(t.x), Math.abs(t.z)) > ARENA.half + 2, `tree at ${t.x.toFixed(1)}, ${t.z.toFixed(1)}`);
   }
+});
+
+test('grounds: the terrain faces up, so it is drawn from above (it was invisible when wound backwards)', () => {
+  const geo = terrainMesh({ grass: 0, grassDry: 0, rock: 0, snow: 0 }).geometry;
+  const normals = geo.getAttribute('normal');
+  let down = 0;
+  for (let i = 0; i < normals.count; i++) if (normals.getY(i) <= 0) down++;
+  assert.equal(down, 0, `${down} vertex normals point down`);
+  // The face winding itself, not just the normals: the first quad outside the middle.
+  const pos = geo.getAttribute('position');
+  const idx = geo.getIndex()!;
+  const v = (k: number) => new THREE.Vector3().fromBufferAttribute(pos, idx.getX(k));
+  const tri = 192 * 6 * 5; // ring 5, first segment
+  const n = new THREE.Vector3().crossVectors(v(tri + 1).sub(v(tri)), v(tri + 2).sub(v(tri)));
+  assert.ok(n.y > 0, 'faces wind counterclockwise seen from above');
+  geo.dispose();
 });
 
 test('grounds: banners hang above her head; dusk lights the braziers, day does not', () => {

@@ -116,7 +116,8 @@ export function terrainMesh(look: TerrainLook): THREE.Mesh {
       const b = i * SEGMENTS + ((j + 1) % SEGMENTS);
       const c2 = a + SEGMENTS;
       const d = b + SEGMENTS;
-      index.push(a, c2, b, b, c2, d);
+      // Counterclockwise seen from above, so the faces (and normals) point up.
+      index.push(a, b, c2, b, d, c2);
     }
   }
   const geo = new THREE.BufferGeometry();
