@@ -1,3 +1,4 @@
+import { EventBus } from '../core/EventBus';
 import { dot, length, normalize, sub, type Vec2 } from '../core/math';
 import type { CameraBasis } from '../combat/direction';
 import { Action } from '../input/actions';
@@ -7,6 +8,15 @@ import type { TargetingQuery } from '../player/contracts';
 export interface Targetable {
   readonly position: Readonly<Vec2>;
   readonly alive: boolean;
+}
+
+/**
+ * Lock-on changes, for presentation (the lock-on sound). `lost`: the target died or got
+ * out of range while the button was still held; `button`: she let go (or toggled off).
+ */
+export interface TargetingEvents extends Record<string, unknown> {
+  targetLocked: { target: Targetable };
+  targetReleased: { target: Targetable; reason: 'button' | 'lost' };
 }
 
 export interface TargetingConfig {
@@ -30,6 +40,7 @@ export const DEFAULT_TARGETING: TargetingConfig = {
 export class TargetingSystem implements TargetingQuery {
   private target: Targetable | null = null;
   readonly cfg: TargetingConfig;
+  readonly events = new EventBus<TargetingEvents>();
 
   constructor(
     private readonly input: InputBuffer,
@@ -55,8 +66,11 @@ export class TargetingSystem implements TargetingQuery {
   }
 
   update(): void {
+    const before = this.target;
+    let lost = false;
     if (this.target && (!this.target.alive || this.distanceTo(this.target) > this.cfg.breakRange)) {
       this.target = null;
+      lost = true;
     }
 
     const press = this.input.peek(Action.Target);
@@ -68,6 +82,10 @@ export class TargetingSystem implements TargetingQuery {
     } else if (press) {
       this.target = this.target ? null : this.pick();
     }
+
+    if (this.target === before) return;
+    if (before) this.events.emit('targetReleased', { target: before, reason: lost ? 'lost' : 'button' });
+    if (this.target) this.events.emit('targetLocked', { target: this.target });
   }
 
   directionToTarget(): Vec2 | null {

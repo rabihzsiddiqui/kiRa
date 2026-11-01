@@ -64,6 +64,8 @@ async function boot(): Promise<void> {
   for (const sink of [grade, fx, sound, new PadRumble(devices)]) game.addFxSink(sink);
   game.events.on('attackStarted', () => sound.swing());
   game.dummyAI.events.on('telegraph', ({ step }) => sound.telegraph(!!step.attack.unblockable));
+  game.targeting.events.on('targetLocked', () => sound.lockOn());
+  game.targeting.events.on('targetReleased', ({ reason }) => sound.lockOff(reason === 'lost'));
   const bladeCharge = new BladeCharge(playerView.sword, reducedMotion);
   const swordTrail = new SwordTrail(playerView.sword);
   // The spin's circle of energy, out at the edge of its reach, swept round with the blade.

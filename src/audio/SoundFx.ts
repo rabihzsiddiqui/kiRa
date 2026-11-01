@@ -3,6 +3,9 @@ import type { FxCue, FxCueData, FxSink } from '../feel/CombatFeel';
 
 type Bus = 'player' | 'world';
 
+/** Lock-on chime: E6, B6, E7 (Hz). */
+const LOCK_ON_NOTES = [1318.5, 1975.5, 2637];
+
 /**
  * Procedural sound: every effect is built from oscillators and filtered noise, so there
  * are no audio files to load. Two buses:
@@ -87,6 +90,26 @@ export class SoundFx implements FxSink {
   /** Her swing (attackStarted). Quiet, so hits and counters stay on top. */
   swing(): void {
     if (this.ctx) this.noise1('bandpass', 900, 1600, 1.5, 0.12, 'player', 0.12, this.ctx.currentTime, 0.02);
+  }
+
+  /**
+   * Lock-on, in the spirit of Zelda's Z-target: a quick rising chime of three bell notes
+   * (E, B, E an octave up) with a short bright shimmer swept up under them.
+   */
+  lockOn(): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    LOCK_ON_NOTES.forEach((hz, i) => this.partials(t + i * 0.045, hz, [1, 2.01], 0.32 - i * 0.04, 0.1, 'player'));
+    this.noise1('highpass', 2500, 7000, 0.8, 0.12, 'player', 0.06, t, 0.01);
+  }
+
+  /** Lock released: a soft two-note fall. Lower and quieter when the target was lost. */
+  lockOff(lost: boolean): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const k = lost ? 0.75 : 1;
+    this.tone('sine', 1320 * k, 1250 * k, 0.09, 'player', 0.05, t, 0.004);
+    this.tone('sine', 880 * k, 820 * k, 0.16, 'player', 0.05 * k, t + 0.06, 0.004);
   }
 
   /** Enemy telegraph: a bright ting for a glint, a low swell for an unblockable. */
