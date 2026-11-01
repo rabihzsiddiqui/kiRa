@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { FaceState, type Expression, type FaceInput } from '../character/face';
 import { HEAD_LOOK, HeadLook, type Gaze } from '../character/headLook';
-import { COLORS } from './ArenaView';
+import { COLORS } from './palette';
 import { buildFigure, type BodyKind, type Figure } from './CharacterFigure';
 import { KEEP_COLOR_LAYER } from './PostFx';
 import type { ThreeAnimator } from './ThreeAnimator';

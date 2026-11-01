@@ -39,11 +39,13 @@ export const ARENA: ArenaLayout = {
     { center: vec2(HALF, 0), half: vec2(WALL.thickness, HALF), height: WALL.height },
     { center: vec2(-HALF, 0), half: vec2(WALL.thickness, HALF), height: WALL.height },
   ],
+  // Tall enough to read as columns. The radius is the shaft plus its base, so she stops at
+  // the stone on every stage.
   pillars: [
-    { center: vec2(-8, 8), radius: 0.6, height: 4 },
-    { center: vec2(8, 8), radius: 0.6, height: 4 },
-    { center: vec2(-8, -8), radius: 0.6, height: 4 },
-    { center: vec2(8, -8), radius: 0.6, height: 4 },
+    { center: vec2(-8, 8), radius: 0.6, height: 5.5 },
+    { center: vec2(8, 8), radius: 0.6, height: 5.5 },
+    { center: vec2(-8, -8), radius: 0.6, height: 5.5 },
+    { center: vec2(8, -8), radius: 0.6, height: 5.5 },
   ],
   playerSpawn: vec2(0, 0),
   // 5 m ahead of the spawn, the same setup the headless tests use.

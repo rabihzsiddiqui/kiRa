@@ -90,6 +90,7 @@ const GradeShader = {
 export class PostFx {
   private readonly composer: EffectComposer;
   private readonly grade: ShaderPass;
+  private readonly bloom: UnrealBloomPass;
   private readonly mask: THREE.WebGLRenderTarget;
   private readonly black = new THREE.MeshBasicMaterial({ color: 0x000000, fog: false });
   private readonly white = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false });
@@ -99,7 +100,7 @@ export class PostFx {
     private readonly renderer: THREE.WebGLRenderer,
     private readonly scene: THREE.Scene,
     private readonly camera: THREE.Camera,
-    reducedMotion: boolean,
+    private readonly reducedMotion: boolean,
   ) {
     const size = renderer.getSize(new THREE.Vector2());
     // MSAA on the composer's target: the canvas's own antialias does not apply here.
@@ -107,13 +108,22 @@ export class PostFx {
     this.composer = new EffectComposer(renderer, target);
     this.composer.addPass(new RenderPass(scene, camera));
     // Subtle: only bright emissive and additive things (sparks, glints, slash arcs) bloom.
-    this.composer.addPass(new UnrealBloomPass(size, reducedMotion ? 0.35 : 0.55, 0.4, 0.88));
+    // Each stage sets its own strength and threshold (setBloom), since a sunlit floor is
+    // far brighter than anything in the dark arena.
+    this.bloom = new UnrealBloomPass(size, 0.55, 0.4, 0.88);
+    this.composer.addPass(this.bloom);
     this.grade = new ShaderPass(GradeShader);
     this.composer.addPass(this.grade);
     this.composer.addPass(new OutputPass());
 
     this.mask = new THREE.WebGLRenderTarget(Math.max(1, size.x / 2), Math.max(1, size.y / 2));
     this.grade.uniforms.tMask.value = this.mask.texture;
+  }
+
+  /** Reduced motion keeps bloom softer: flashes and sparks glow less. */
+  setBloom(b: { strength: number; threshold: number }): void {
+    this.bloom.strength = b.strength * (this.reducedMotion ? 0.64 : 1);
+    this.bloom.threshold = b.threshold;
   }
 
   setSize(width: number, height: number): void {

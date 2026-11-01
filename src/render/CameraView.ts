@@ -9,7 +9,7 @@ export class CameraView {
   readonly camera: THREE.PerspectiveCamera;
 
   constructor(aspect: number, fov = 60) {
-    this.camera = new THREE.PerspectiveCamera(fov, aspect, 0.1, 200);
+    this.camera = new THREE.PerspectiveCamera(fov, aspect, 0.1, 1000);
   }
 
   setAspect(aspect: number): void {

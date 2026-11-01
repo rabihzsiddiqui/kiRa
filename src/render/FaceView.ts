@@ -22,6 +22,16 @@ export interface FaceLook {
   set(e: Expression, gazeX: number, gazeY: number): void;
 }
 
+/**
+ * Scene brightness for the eyes, shared by every face. The shader is unlit, so on a dark
+ * stage the whites would glow; the stage sets this (src/render/stages).
+ */
+const faceLight = { value: 1 };
+
+export function setFaceLight(k: number): void {
+  faceLight.value = k;
+}
+
 export function faceMaterial(): FaceLook {
   const color = (hex: number) => new THREE.Color(hex);
   const material = new THREE.ShaderMaterial({
@@ -36,6 +46,7 @@ export function faceMaterial(): FaceLook {
       uIrisBottom: { value: color(0x818cf8) },
       uPupil: { value: color(0x0b0a1f) },
       uLash: { value: color(0x15110f) },
+      uLight: faceLight,
     },
     defines: {
       EYE_X: FACE.eyeX.toFixed(4),
@@ -92,6 +103,7 @@ const FRAG = /* glsl */ `
   uniform vec3 uIrisBottom;
   uniform vec3 uPupil;
   uniform vec3 uLash;
+  uniform float uLight;
   varying vec2 vFace;
   varying float vFacing;
 
@@ -173,6 +185,7 @@ const FRAG = /* glsl */ `
 
     c.a *= smoothstep(0.08, 0.35, vFacing);
     if (c.a < 0.003) discard;
+    c.rgb *= uLight;
     gl_FragColor = c;
     #include <tonemapping_fragment>
     #include <colorspace_fragment>

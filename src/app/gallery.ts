@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { CLIPS, LOCOMOTION } from '../character/clips';
 import { NEUTRAL, type Expression } from '../character/face';
 import { ATTACKS, type AttackDef } from '../combat/moves';
-import { COLORS } from '../render/ArenaView';
+import { COLORS } from '../render/palette';
 import { PlayerView } from '../render/PlayerView';
 import { spinWaveTrails, SwordTrail } from '../render/SwordTrail';
 import { ThreeAnimator } from '../render/ThreeAnimator';
@@ -66,6 +66,9 @@ const LOCO_VARIANTS: Array<[string, Record<string, number>]> = [
   ['charge idle', { locomotion: 3 }],
   ['charge step f', { locomotion: 3, strafeY: 1 }],
   ['charge step r', { locomotion: 3, strafeX: 1 }],
+  ['guard idle', { locomotion: 4 }],
+  ['guard step f', { locomotion: 4, strafeY: 1 }],
+  ['guard step r', { locomotion: 4, strafeX: 1 }],
 ];
 
 const canvas = document.getElementById('view') as HTMLCanvasElement;

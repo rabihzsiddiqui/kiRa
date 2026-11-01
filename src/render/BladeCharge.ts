@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { COLORS } from './ArenaView';
+import { COLORS } from './palette';
 import { bladeMiddle, bladeShell, SHELL_SIDES } from './Katana';
 
 /** What the blade needs to know each frame. Read from the player, never written back. */

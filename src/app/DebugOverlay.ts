@@ -39,6 +39,7 @@ const TOUCH_CONTROLS: ReadonlyArray<[string, string]> = [
   ['roll atk', 'atk during a roll'],
   ['dummy ai', 'ai pill'],
   ['pause sim', 'pause pill'],
+  ['options', 'options pill'],
   ['hud', 'hud pill'],
 ];
 
@@ -54,6 +55,7 @@ const KEYBOARD_CONTROLS: ReadonlyArray<[string, string]> = [
   ['dummy ai', 'h on / off'],
   ['strings', '1 to 4, 0 cycles'],
   ['pause sim', 'p'],
+  ['options', 'o or esc'],
   ['mute', 'm'],
   ['hud', 'tab'],
 ];
@@ -70,7 +72,7 @@ const padControls = (l: PadLabels): ReadonlyArray<[string, string]> => [
   ['roll atk', 'attack during a roll'],
   ['dummy ai', 'd-pad up'],
   ['strings', 'd-pad left / right'],
-  ['pause sim', 'start'],
+  ['options', 'start (pauses)'],
   ['mute', 'm'],
   ['hud', 'back'],
 ];

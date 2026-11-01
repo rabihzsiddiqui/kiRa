@@ -59,6 +59,12 @@ export class Devices {
     return { yaw: m.yaw + p.yaw + t.yaw, pitch: m.pitch + p.pitch + t.pitch };
   }
 
+  /** Drop held keys and taps on every device (a menu opened or closed). */
+  release(): void {
+    this.keyboard.release();
+    this.touch?.release();
+  }
+
   dispose(): void {
     this.keyboard.dispose();
     this.gamepad.dispose();

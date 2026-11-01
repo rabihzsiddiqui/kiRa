@@ -4,7 +4,7 @@ import { shapeOutline } from '../combat/hitShapes';
 import type { HitShape } from '../combat/moves';
 import type { Vec2 } from '../core/math';
 import { planarTo3, yawFromFacing } from '../physics/space';
-import { COLORS } from './ArenaView';
+import { COLORS } from './palette';
 
 export interface HurtboxView {
   position: Readonly<Vec2>;

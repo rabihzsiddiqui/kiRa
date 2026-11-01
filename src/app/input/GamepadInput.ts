@@ -1,5 +1,5 @@
 import { vec2 } from '../../core/math';
-import { padFamily, padLabels, pickPad, readPad, type PadDebug, type PadFamily, type PadLabels } from './padLayout';
+import { padFamily, padLabels, pickPad, readPad, type PadDebug, type PadFamily, type PadLabels, type PadMenu } from './padLayout';
 import type { DeviceFrame, LookDelta } from './types';
 
 const LOOK_SPEED = 2.8; // radians per second at full tilt
@@ -21,9 +21,12 @@ export class GamepadInput {
   /** True on the poll where the pad was touched (stick or button). Devices uses it to pick the active device. */
   touched = false;
   onDebug?: (d: PadDebug) => void;
+  /** Options menu presses, fired once per press. */
+  onMenu?: (m: PadMenu) => void;
   onConnection?: (c: PadConnection) => void;
 
   private prevDebug = new Set<PadDebug>();
+  private prevMenu = new Set<PadMenu>();
   private readonly off: Array<() => void> = [];
 
   constructor() {
@@ -53,13 +56,15 @@ export class GamepadInput {
     return { stick: f.stick, buttons: f.buttons };
   }
 
-  /** Right stick look for this render frame. Also fires debug button presses. */
+  /** Right stick look for this render frame. Also fires debug and menu button presses. */
   look(realDt: number): LookDelta {
     const pad = this.pad();
     if (!pad) return { yaw: 0, pitch: 0 };
     const f = readPad(pad);
     for (const d of f.debug) if (!this.prevDebug.has(d)) this.onDebug?.(d);
     this.prevDebug = f.debug;
+    for (const m of f.menu) if (!this.prevMenu.has(m)) this.onMenu?.(m);
+    this.prevMenu = f.menu;
     return { yaw: f.look.x * LOOK_SPEED * realDt, pitch: f.look.y * LOOK_SPEED * realDt };
   }
 

@@ -14,7 +14,7 @@ import { BladeCharge } from '../render/BladeCharge';
 import { spinWaveTrails, SwordTrail } from '../render/SwordTrail';
 import { trailEmitting } from '../feel/swingTrail';
 import { CameraView } from '../render/CameraView';
-import { DummyView } from '../render/DummyView';
+import { DUMMY_HEAD_AT, DummyView } from '../render/DummyView';
 import { HitboxDebugView } from '../render/HitboxDebugView';
 import { PlayerView } from '../render/PlayerView';
 import { PostFx } from '../render/PostFx';
@@ -22,6 +22,9 @@ import { ThreeFx } from '../render/ThreeFx';
 import { ARENA } from './arena';
 import { CounterGlyph } from './CounterGlyph';
 import { DebugOverlay } from './DebugOverlay';
+import { OptionsMenu } from './OptionsMenu';
+import { initialStage, STAGE_STORAGE_KEY, type StageId } from './stages';
+import type { DeviceKind } from './input/Devices';
 import { Game, SIM_DT } from './Game';
 import { Devices } from './input/Devices';
 import { PadRumble } from './input/PadRumble';
@@ -47,7 +50,8 @@ async function boot(): Promise<void> {
   game.addFxSink(rig);
   const cameraView = new CameraView(window.innerWidth / window.innerHeight, rig.cfg.fov);
 
-  const arena = new ArenaView(canvas, ARENA);
+  const arena = new ArenaView(canvas, ARENA, reducedMotion);
+  const stageLook = arena.setStage(initialStage(location.search, readStored(STAGE_STORAGE_KEY)));
   // Phones: render at most 1.5x density. Fill rate is the bottleneck there, and the
   // post-processing stack runs at full resolution.
   if (devices.touch) arena.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
@@ -55,8 +59,8 @@ async function boot(): Promise<void> {
   const body = new URLSearchParams(location.search).get('body') === 'classic' ? 'classic' : 'mesh';
   const playerView = new PlayerView(game.animator, body);
   const dummyView = new DummyView(ARENA.dummy.position, ARENA.dummy.radius, ARENA.dummy.height);
-  /** Where she looks on the dummy: its head (DummyView puts it at 95% of the height). */
-  const DUMMY_HEAD = ARENA.dummy.height * 0.95;
+  /** Where she looks on the dummy: the middle of its sack head. */
+  const DUMMY_HEAD = ARENA.dummy.height * DUMMY_HEAD_AT;
   const lookPoint = new THREE.Vector3();
   const hitboxes = new HitboxDebugView();
   hitboxes.visible = false; // V shows hit areas and hurtboxes
@@ -77,6 +81,7 @@ async function boot(): Promise<void> {
   const spinWave = spinWaveTrails(playerView.sword, () => playerView.root.position);
   arena.scene.add(swordTrail.mesh, ...spinWave.map((t) => t.mesh));
   const post = new PostFx(arena.renderer, arena.scene, cameraView.camera, reducedMotion);
+  post.setBloom(stageLook.bloom);
   const glyph = new CounterGlyph(document.body, game, devices);
   const chest = new THREE.Vector3();
   const focus = new THREE.Vector2(0.5, 0.5);
@@ -95,6 +100,21 @@ async function boot(): Promise<void> {
     window.__kira = game;
     window.__kiraFx = fx;
   }
+
+  // Options: the sim pauses while it is open. Picking a stage applies it behind the panel.
+  const menu = new OptionsMenu(document.body, arena.current ?? 'grounds');
+  menu.onStage = (id: StageId) => {
+    post.setBloom(arena.setStage(id).bloom);
+    writeStored(STAGE_STORAGE_KEY, id);
+  };
+  // Keys and taps made while it is open never reach her.
+  menu.onToggle = () => devices.release();
+  const menuHint = (kind: DeviceKind) =>
+    kind === 'gamepad'
+      ? 'paused while open. d-pad to pick, start to close.'
+      : kind === 'touch'
+        ? 'paused while open. tap a stage, then close.'
+        : 'paused while open. arrows to pick, o or esc to close.';
 
   // Debug controls live here, not in the devices: they are not gameplay actions.
   const debug = {
@@ -120,7 +140,12 @@ async function boot(): Promise<void> {
     },
   };
   window.addEventListener('keydown', (e) => {
+    if (menu.open) {
+      if (menu.key(e)) e.preventDefault(); // also stops a focused button clicking itself
+      return;
+    }
     if (e.repeat) return;
+    if (e.code === 'KeyO' || e.code === 'Escape') menu.show(menuHint('keyboard'));
     if (e.code === 'KeyH') debug.toggleAI();
     // 1-4 pick one string to repeat, 0 cycles through all of them.
     const digit = /^Digit([0-4])$/.exec(e.code);
@@ -135,12 +160,16 @@ async function boot(): Promise<void> {
       overlay.toggle();
     }
   });
+  devices.gamepad.onMenu = (m) => {
+    if (m === 'menu') menu.toggle(menuHint('gamepad'));
+    else if (menu.open) menu.pad(m);
+  };
   devices.gamepad.onDebug = (d) => {
+    if (menu.open) return; // the d-pad is driving the menu
     if (d === 'ai') debug.toggleAI();
     else if (d === 'prevString') debug.stepString(-1);
     else if (d === 'nextString') debug.stepString(1);
     else if (d === 'hitAreas') debug.toggleHitAreas();
-    else if (d === 'pause') debug.togglePause();
     else if (d === 'slowmo') debug.toggleSlowmo();
     else if (d === 'infinitePerfect') debug.toggleInfinitePerfect();
     else if (d === 'overlay') overlay.toggle();
@@ -152,6 +181,7 @@ async function boot(): Promise<void> {
         debug.toggleAI();
         toast(game.dummyAI.enabled ? 'dummy ai on' : 'dummy ai off');
       } else if (d === 'pause') debug.togglePause();
+      else if (d === 'options') menu.toggle(menuHint('touch'));
       else if (d === 'fullscreen') toggleFullscreen();
     };
   }
@@ -172,13 +202,16 @@ async function boot(): Promise<void> {
   let lastWorldTime = 0;
   /** Debug pause: rendering and the camera keep running, the sim does not. */
   let paused = false;
+  /** Real seconds the stage has been animating (wind, clouds), stopped while paused. */
+  let stageTime = 0;
 
   const frame = (now: number) => {
     const realDt = Math.min((now - last) / 1000, MAX_FRAME_TIME);
     last = now;
 
     // Fixed 60 Hz sim. Each step is one frame of ARCHITECTURE.md §2.
-    accumulator = paused ? 0 : accumulator + realDt;
+    const frozen = paused || menu.open;
+    accumulator = frozen ? 0 : accumulator + realDt;
     let steps = 0;
     while (accumulator >= SIM_DT && steps < MAX_STEPS_PER_FRAME) {
       game.step();
@@ -218,7 +251,9 @@ async function boot(): Promise<void> {
     cameraView.apply(rig.update(realDt, devices.look(realDt), subject)); // camera on real time
 
     // Paused: effects freeze too (a true freeze frame), the camera still orbits.
-    const fxDt = paused ? 0 : realDt;
+    const fxDt = frozen ? 0 : realDt;
+    stageTime += fxDt;
+    arena.update(stageTime);
     // Her eyes on the target (or what she'd target), at its head. On her clock.
     const look = game.targeting.lookTarget;
     const at = look && planarTo3(look.position, look === game.dummy ? DUMMY_HEAD : 1.5);
@@ -254,6 +289,23 @@ async function boot(): Promise<void> {
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+}
+
+/** localStorage can throw (private browsing, storage off). The choice just isn't kept then. */
+function readStored(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // not saved, still applied
+  }
 }
 
 function toggleFullscreen(): void {

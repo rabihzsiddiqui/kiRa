@@ -63,9 +63,19 @@ test('pads with no standard mapping are still used; standard ones are preferred'
 test('activity and debug buttons', () => {
   assert.equal(readPad(pad()).active, false, 'a resting pad is not the active device');
   assert.equal(readPad(pad({ axes: [0, 0, 0.5, 0] })).active, true);
-  const f = readPad(pad({ pressed: [BUTTON.start, BUTTON.dpadRight] }));
-  assert.deepEqual([...f.debug].sort(), ['nextString', 'pause']);
+  const f = readPad(pad({ pressed: [BUTTON.back, BUTTON.dpadRight] }));
+  assert.deepEqual([...f.debug].sort(), ['nextString', 'overlay']);
   assert.equal(f.active, true);
   const clicks = readPad(pad({ pressed: [BUTTON.l3, BUTTON.r3] }));
   assert.deepEqual([...clicks.debug].sort(), ['infinitePerfect', 'slowmo'], 'stick clicks toggle the hud switches');
+});
+
+test('options menu: start opens it, d-pad or stick moves, south picks, east backs out', () => {
+  assert.deepEqual([...readPad(pad({ pressed: [BUTTON.start] })).menu], ['menu']);
+  assert.deepEqual([...readPad(pad({ pressed: [BUTTON.start] })).debug], [], 'start is not a debug button any more');
+  assert.deepEqual([...readPad(pad({ pressed: [BUTTON.dpadUp, BUTTON.south] })).menu].sort(), ['select', 'up']);
+  assert.deepEqual([...readPad(pad({ pressed: [BUTTON.east] })).menu], ['back']);
+  assert.deepEqual([...readPad(pad({ axes: [0, 0.9, 0, 0] })).menu], ['down'], 'stick pulled back steps down');
+  assert.deepEqual([...readPad(pad({ axes: [0, -0.9, 0, 0] })).menu], ['up']);
+  assert.deepEqual([...readPad(pad({ axes: [0, -0.4, 0, 0] })).menu], [], 'a light push does not step');
 });

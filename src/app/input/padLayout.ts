@@ -50,7 +50,6 @@ const ACTIONS: ReadonlyArray<[number, Action]> = [
 
 /** Sandbox debug controls on the pad (keyboard has its own keys). */
 export type PadDebug =
-  | 'pause'
   | 'overlay'
   | 'ai'
   | 'prevString'
@@ -59,7 +58,6 @@ export type PadDebug =
   | 'slowmo'
   | 'infinitePerfect';
 const DEBUG: ReadonlyArray<[number, PadDebug]> = [
-  [BUTTON.start, 'pause'],
   [BUTTON.back, 'overlay'],
   [BUTTON.dpadUp, 'ai'],
   [BUTTON.dpadLeft, 'prevString'],
@@ -68,6 +66,22 @@ const DEBUG: ReadonlyArray<[number, PadDebug]> = [
   [BUTTON.l3, 'slowmo'],
   [BUTTON.r3, 'infinitePerfect'],
 ];
+
+/**
+ * Options menu on the pad: start opens and closes it (the sim pauses), the d-pad or left
+ * stick moves, south picks, east backs out. Only acted on while the menu is open, except
+ * 'menu' itself.
+ */
+export type PadMenu = 'menu' | 'up' | 'down' | 'select' | 'back';
+const MENU: ReadonlyArray<[number, PadMenu]> = [
+  [BUTTON.start, 'menu'],
+  [BUTTON.dpadUp, 'up'],
+  [BUTTON.dpadDown, 'down'],
+  [BUTTON.south, 'select'],
+  [BUTTON.east, 'back'],
+];
+/** Left stick past this counts as a menu step up or down. */
+const MENU_STICK = 0.6;
 
 export const STICK_DEADZONE = 0.15;
 export const TRIGGER_THRESHOLD = 0.4;
@@ -108,6 +122,8 @@ export interface PadFrame {
   buttons: Partial<Record<Action, boolean>>;
   /** Debug buttons held this poll. */
   debug: Set<PadDebug>;
+  /** Menu buttons held this poll (the stick counts as up / down). */
+  menu: Set<PadMenu>;
   /** Anything pressed or pushed past the deadzone: this pad is the active device. */
   active: boolean;
 }
@@ -121,16 +137,20 @@ export function readPad(pad: PadLike): PadFrame {
   for (const [i, action] of ACTIONS) if (held(i)) buttons[action] = true;
   const debug = new Set<PadDebug>();
   for (const [i, d] of DEBUG) if (held(i)) debug.add(d);
+  const menu = new Set<PadMenu>();
+  for (const [i, d] of MENU) if (held(i)) menu.add(d);
 
   // Pad Y axes point down; the core's stick y is up/forward.
   const stick = deadzone(vec2(pad.axes[AXIS.lx] ?? 0, -(pad.axes[AXIS.ly] ?? 0)));
   const rawLook = deadzone(vec2(pad.axes[AXIS.rx] ?? 0, pad.axes[AXIS.ry] ?? 0));
   // Squared response: small pushes aim finely, full tilt still turns fast.
   const look = scale(rawLook, length(rawLook));
+  if (stick.y > MENU_STICK) menu.add('up');
+  if (stick.y < -MENU_STICK) menu.add('down');
 
   const active =
     length(stick) > 0 || length(rawLook) > 0 || pad.buttons.some((b) => b.pressed || b.value > TRIGGER_THRESHOLD);
-  return { stick, look, buttons, debug, active };
+  return { stick, look, buttons, debug, menu, active };
 }
 
 /** Radial deadzone, rescaled so the stick still reaches full length at the rim. */

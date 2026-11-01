@@ -4,7 +4,7 @@ import { evadeLabel, knobOffset, LOCK_GRACE, LOOK_SENSITIVITY, stickFromDrag, zo
 import type { DeviceFrame, LookDelta } from './types';
 
 /** Sandbox controls with no gameplay action behind them. */
-export type TouchDebug = 'hud' | 'ai' | 'pause' | 'fullscreen';
+export type TouchDebug = 'hud' | 'ai' | 'pause' | 'options' | 'fullscreen';
 
 interface ButtonDef {
   action: Action;
@@ -25,6 +25,7 @@ const PILLS: ReadonlyArray<[TouchDebug, string]> = [
   ['hud', 'hud'],
   ['ai', 'ai'],
   ['pause', 'pause'],
+  ['options', 'options'],
   ['fullscreen', 'full'],
 ];
 
@@ -120,6 +121,19 @@ export class TouchControls {
     this.touchedSincePoll = false;
     this.pendingTime = time;
     return { stick: { ...this.stick }, buttons };
+  }
+
+  /** Let go of everything: buttons, stick, look drag. The lock latch stays (it is a toggle). */
+  release(): void {
+    this.held.clear();
+    this.latched.clear();
+    this.stick = vec2();
+    this.stickId = null;
+    this.lookId = null;
+    this.lookX = 0;
+    this.lookY = 0;
+    this.stickBase.hidden = true;
+    for (const b of this.buttons.values()) b.classList.remove('touch-btn-down');
   }
 
   /** Drag-to-look since the last call, radians. Call once per render frame. */

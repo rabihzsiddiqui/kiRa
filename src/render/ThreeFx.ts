@@ -3,7 +3,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { ATTACKS, AttackId } from '../combat/moves';
 import type { FxCue, FxCueData, FxSink } from '../feel/CombatFeel';
 import { planarTo3 } from '../physics/space';
-import { COLORS } from './ArenaView';
+import { COLORS } from './palette';
 import type { PlayerView } from './PlayerView';
 import { KEEP_COLOR_LAYER } from './PostFx';
 

@@ -83,6 +83,18 @@ export class KeyboardMouse {
     return d;
   }
 
+  /**
+   * Forget every held and latched key and free the mouse. Called when a menu opens and
+   * closes, so a key pressed while it was open never reaches her.
+   */
+  release(): void {
+    this.down.clear();
+    this.latched.clear();
+    this.lookX = 0;
+    this.lookY = 0;
+    if (this.pointerLocked) document.exitPointerLock();
+  }
+
   dispose(): void {
     for (const f of this.off) f();
   }
