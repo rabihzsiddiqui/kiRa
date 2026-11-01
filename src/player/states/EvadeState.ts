@@ -2,7 +2,7 @@ import { length, normalize, rotateToward, scale, type Vec2 } from '../../core/ma
 import { EVADES, EvadeId, type EvadeDef } from '../../combat/moves';
 import type { Transition } from '../../fsm/StateMachine';
 import { PlayerStateId, type Defense, type PlayerContext, type PlayerState } from '../contracts';
-import { commitIntent, freeRunSpeed, moveVector, readIntent, type EvadeParams } from './shared';
+import { commitIntent, freeRunSpeed, lockStance, moveVector, readIntent, type EvadeParams } from './shared';
 
 /**
  * Roll, side hops and backflip. Direction was decided by the IntentResolver;
@@ -38,7 +38,7 @@ export class EvadeState implements PlayerState {
     this.dir = normalize(p.dir);
     this.t = 0;
     this.followUp = undefined;
-    this.carry = this.def.faceTravel && !ctx.targeting.isLocked;
+    this.carry = this.def.faceTravel && !lockStance(ctx);
 
     if (this.def.faceTravel) ctx.motor.turnToward(this.dir, Infinity, 0);
     if (this.def.upSpeed > 0) ctx.motor.launch(this.def.upSpeed);

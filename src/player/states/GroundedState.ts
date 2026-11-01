@@ -1,7 +1,7 @@
 import { dot, length, rightOf, scale } from '../../core/math';
 import { Action } from '../../input/actions';
 import { PlayerStateId, type PlayerContext, type PlayerState } from '../contracts';
-import { commitIntent, freeRunSpeed, moveVector, readIntent, steerFacing } from './shared';
+import { commitIntent, freeRunSpeed, lockStance, moveVector, readIntent, steerFacing } from './shared';
 
 /**
  * Idle / Run / Strafe as one state. They share every exit, and differ only in
@@ -35,8 +35,8 @@ export class GroundedState implements PlayerState {
     const mag = length(move);
     steerFacing(ctx, move, dt);
 
-    if (targeting.isLocked) {
-      // Strafe: move along the stick, body stays on the target.
+    if (lockStance(ctx)) {
+      // Strafe: move along the stick, body stays on the target (or, view locked, ahead).
       motor.setPlanarVelocity(scale(move, tuning.strafeSpeed));
       ctx.animator.setFloat('locomotion', 2);
       ctx.animator.setFloat('strafeX', dot(move, rightOf(motor.facing)));

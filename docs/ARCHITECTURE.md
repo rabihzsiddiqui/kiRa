@@ -153,6 +153,8 @@ All of this lives in `resolveIntent()` (`src/combat/IntentResolver.ts`). Directi
 | Evade, hit lands in first 0.15 s | Perfect dodge → Attack = Phantom Dash | same |
 | Block pressed, hit lands in first 0.12 s | Perfect block → Attack = Overpower | same |
 
+"Targeted" means the target button is on, with or without an enemy. With nothing in range it's a view lock (Zelda's Z with no enemy): she keeps her facing, strafes, and gets the targeted column (side hops, backflip, jump attack), with the camera behind her and the lock-on vignette. `lockStance()` in `src/player/states/shared.ts` is the one check.
+
 Tunable: `untargetedFrame: 'camera'` makes untargeted Forward/Left relative to the camera instead of her facing.
 
 ### Combos
@@ -212,7 +214,7 @@ Counters call `TimeController.clear()` and release her to full speed while the w
 - Yaw sits behind the player along the player-to-target line, offset slightly so she sits on the left third of the frame.
 - Distance = base + separation × k, clamped, so both stay in frame as they spread apart.
 - When the lock breaks, ease back to orbit over about 0.3 s. Never snap.
-- `targeting.wantsRecenter` (button held, nothing in range): swing behind her.
+- `targeting.isViewLocked` (button on, nothing in range): swing behind her and stay there. She holds her facing while view locked, so the camera holds too.
 
 **Event hooks:** `perfectDodge` → FOV punch out + slight dutch roll. `perfectBlock` → short shake + push in. `counter.*` → quick dolly toward the action.
 

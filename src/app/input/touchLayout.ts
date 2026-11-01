@@ -14,11 +14,6 @@ export const JOYSTICK_DEADZONE = 0.12;
 export const LOOK_SENSITIVITY = 0.006;
 /** Share of the screen width, from the left, where a touch grabs the joystick. */
 export const STICK_ZONE = 0.45;
-/**
- * A latched lock button lets go on its own if nothing got targeted this long after the
- * tap, so a tap with nothing in range just recenters the camera (like a pad tap).
- */
-export const LOCK_GRACE = 0.25;
 
 /** Thumb offset from where it landed (px, y down) to a stick vector (y up, length 0..1). */
 export function stickFromDrag(dx: number, dy: number, radius = JOYSTICK_RADIUS, deadzone = JOYSTICK_DEADZONE): Vec2 {

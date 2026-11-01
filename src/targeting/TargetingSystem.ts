@@ -13,10 +13,17 @@ export interface Targetable {
 /**
  * Lock-on changes, for presentation (the lock-on sound). `lost`: the target died or got
  * out of range while the button was still held; `button`: she let go (or toggled off).
+ *
+ * View lock: the button held with nothing to lock, so the camera recenters behind her.
+ * It only announces a fresh press. Picking up a target mid-hold hands over to
+ * targetLocked quietly, and a hold left over from a lost lock stays silent, so the
+ * two sounds never stack and every viewReleased has a viewLocked before it.
  */
 export interface TargetingEvents extends Record<string, unknown> {
   targetLocked: { target: Targetable };
   targetReleased: { target: Targetable; reason: 'button' | 'lost' };
+  viewLocked: Record<string, never>;
+  viewReleased: Record<string, never>;
 }
 
 export interface TargetingConfig {
@@ -39,6 +46,10 @@ export const DEFAULT_TARGETING: TargetingConfig = {
  */
 export class TargetingSystem implements TargetingQuery {
   private target: Targetable | null = null;
+  /** Toggle mode: a press with nothing in range turned the view lock on. */
+  private viewToggled = false;
+  /** The current recenter hold: none, one that was announced, or one left over from a lost lock. */
+  private viewHold: 'none' | 'announced' | 'silent' = 'none';
   readonly cfg: TargetingConfig;
   readonly events = new EventBus<TargetingEvents>();
 
@@ -88,9 +99,10 @@ export class TargetingSystem implements TargetingQuery {
     return best;
   }
 
-  /** True when the button is held but nothing is in range (camera recenters behind her). */
-  get wantsRecenter(): boolean {
-    return this.input.isHeld(Action.Target) && !this.target;
+  /** Target button on with nothing locked: she strafes, the camera sits behind her. */
+  get isViewLocked(): boolean {
+    if (this.target) return false;
+    return this.cfg.mode === 'hold' ? this.input.isHeld(Action.Target) : this.viewToggled;
   }
 
   update(): void {
@@ -108,12 +120,32 @@ export class TargetingSystem implements TargetingQuery {
       if (!this.input.isHeld(Action.Target)) this.target = null;
       else if (!this.target) this.target = this.pick();
     } else if (press) {
-      this.target = this.target ? null : this.pick();
+      // Off from a lock or a view lock; otherwise lock on, or view lock if nothing's there.
+      const wasOn = before !== null || this.viewToggled;
+      this.target = wasOn ? null : this.pick();
+      this.viewToggled = !wasOn && !this.target;
+    } else if (this.viewToggled) {
+      // Like holding the button: something coming into range gets locked.
+      this.target = this.pick();
+      if (this.target) this.viewToggled = false;
     }
 
-    if (this.target === before) return;
-    if (before) this.events.emit('targetReleased', { target: before, reason: lost ? 'lost' : 'button' });
-    if (this.target) this.events.emit('targetLocked', { target: this.target });
+    if (this.target !== before) {
+      if (before) this.events.emit('targetReleased', { target: before, reason: lost ? 'lost' : 'button' });
+      if (this.target) this.events.emit('targetLocked', { target: this.target });
+    }
+    this.updateViewLock(before !== null);
+  }
+
+  private updateViewLock(wasLocked: boolean): void {
+    const recentering = this.isViewLocked;
+    if (recentering && this.viewHold === 'none') {
+      this.viewHold = wasLocked ? 'silent' : 'announced';
+      if (this.viewHold === 'announced') this.events.emit('viewLocked', {});
+    } else if (!recentering && this.viewHold !== 'none') {
+      if (this.viewHold === 'announced' && !this.target) this.events.emit('viewReleased', {});
+      this.viewHold = 'none';
+    }
   }
 
   directionToTarget(): Vec2 | null {

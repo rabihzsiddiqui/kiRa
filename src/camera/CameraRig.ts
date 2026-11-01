@@ -5,11 +5,8 @@ import type { TargetingQuery } from '../player/contracts';
 import { planarTo3, yawFromFacing, type Vec3 } from '../physics/space';
 import { Pulse, smoothstep, Spring } from './damp';
 
-/** TargetingSystem satisfies this. The rig only reads it. */
-export interface CameraTargeting extends TargetingQuery {
-  /** Target button held with nothing in range: swing behind her. */
-  readonly wantsRecenter: boolean;
-}
+/** TargetingSystem satisfies this. The rig only reads it. View lock: swing behind her. */
+export type CameraTargeting = TargetingQuery;
 
 /** What the camera follows. Interpolated per render frame by the caller. */
 export interface CameraSubject {
@@ -217,7 +214,7 @@ export class CameraRig implements FxSink {
     if (dir) {
       this.yaw.toAngle(yawFromFacing(dir) + cfg.lockYawOffset, cfg.lockYawTime, dt);
       this.pitch.to(cfg.lockPitch, cfg.lockPitchTime, dt);
-    } else if (this.targeting.wantsRecenter) {
+    } else if (this.targeting.isViewLocked) {
       this.yaw.toAngle(yawFromFacing(subject.facing), cfg.recenterTime, dt);
       this.pitch.to(cfg.defaultPitch, cfg.recenterTime * 2, dt);
     } else {

@@ -25,7 +25,7 @@ before(async () => {
 /** Targeting stand-in: lock on/off by hand, direction from live positions. */
 class FakeTargeting implements CameraTargeting {
   locked = false;
-  wantsRecenter = false;
+  isViewLocked = false;
   targetNearby = false;
   constructor(
     readonly player: { position: Vec2 },
@@ -199,7 +199,7 @@ test('target button with nothing in range swings the camera behind her', () => {
   assert.ok(Math.abs(rig.yaw.value) > 1);
 
   subject.facing = vec2(0, 1);
-  targeting.wantsRecenter = true;
+  targeting.isViewLocked = true;
   for (let i = 0; i < 30; i++) step();
   assert.ok(Math.abs(rig.yaw.value) < 0.05, `behind her after 0.5 s (yaw ${rig.yaw.value.toFixed(3)})`);
 });

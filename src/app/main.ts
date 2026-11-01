@@ -73,10 +73,12 @@ async function boot(): Promise<void> {
   const fx = new ThreeFx(arena.scene, cameraView.camera, playerView, reducedMotion);
   const sound = new SoundFx();
   for (const sink of [grade, fx, sound, new PadRumble(devices)]) game.addFxSink(sink);
-  game.events.on('attackStarted', () => sound.swing());
+  game.events.on('attackStarted', ({ attack }) => sound.swing(attack));
   game.dummyAI.events.on('telegraph', ({ step }) => sound.telegraph(!!step.attack.unblockable));
   game.targeting.events.on('targetLocked', () => sound.lockOn());
   game.targeting.events.on('targetReleased', ({ reason }) => sound.lockOff(reason === 'lost'));
+  game.targeting.events.on('viewLocked', () => sound.viewLock(true));
+  game.targeting.events.on('viewReleased', () => sound.viewLock(false));
   const bladeCharge = new BladeCharge(playerView.sword, reducedMotion);
   const swordTrail = new SwordTrail(playerView.sword);
   // The spin's circle of energy, out at the edge of its reach, swept round with the blade.
@@ -96,7 +98,7 @@ async function boot(): Promise<void> {
   // Phones: the hud would cover most of the screen; it is one tap away on the hud pill.
   if (devices.touch) {
     overlay.toggle();
-    devices.touch.setLockQuery(() => game.targeting.isLocked);
+    devices.touch.setLockQuery(() => game.targeting.isLocked || game.targeting.isViewLocked);
   }
   if (import.meta.env.DEV) {
     window.__kira = game;
@@ -280,7 +282,8 @@ async function boot(): Promise<void> {
     swordTrail.update(fxDt * game.time.playerScale, trailInput);
     for (const t of spinWave) t.update(fxDt * game.time.playerScale, trailInput);
     fx.update(fxDt, worldDt);
-    const g = grade.update(fxDt, game.time.worldScale, game.targeting.isLocked);
+    // The vignette closes in for a view lock too, as Zelda's bars do with no enemy around.
+    const g = grade.update(fxDt, game.time.worldScale, game.targeting.isLocked || game.targeting.isViewLocked);
     sound.setWorldLowpass(g.lowpassHz);
     chest.set(pose.pos.x, pose.pos.y + 1.2, pose.pos.z);
     const ndc = chest.clone().project(cameraView.camera);

@@ -27,6 +27,11 @@ export interface CharacterMotor {
 /** Targeting module: decides IF we are locked and ON WHAT. The FSM only asks. */
 export interface TargetingQuery {
   readonly isLocked: boolean;
+  /**
+   * Target button on with nothing to lock (Zelda's Z with no enemy): she keeps her
+   * facing and strafes, the camera sits behind her. Never true while isLocked.
+   */
+  readonly isViewLocked: boolean;
   /** Something targetable is within range, wherever the camera points (locked or not). */
   readonly targetNearby: boolean;
   /** Unit planar direction from the player to the target, or null if none. */

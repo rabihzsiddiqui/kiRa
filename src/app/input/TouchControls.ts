@@ -1,6 +1,6 @@
 import { vec2, type Vec2 } from '../../core/math';
 import { Action } from '../../input/actions';
-import { evadeLabel, knobOffset, LOCK_GRACE, LOOK_SENSITIVITY, stickFromDrag, zoneAt } from './touchLayout';
+import { evadeLabel, knobOffset, LOOK_SENSITIVITY, stickFromDrag, zoneAt } from './touchLayout';
 import type { DeviceFrame, LookDelta } from './types';
 
 /** Sandbox controls with no gameplay action behind them. */
@@ -56,10 +56,7 @@ export class TouchControls {
   private readonly held = new Set<Action>();
   private readonly latched = new Set<Action>();
   private targetOn = false;
-  private targetSince = 0;
   private touchedSincePoll = false;
-  /** Last poll time, so a lock tap can stamp when it latched. */
-  private pendingTime = 0;
   private isLocked: () => boolean = () => false;
 
   constructor(parent: HTMLElement) {
@@ -100,16 +97,14 @@ export class TouchControls {
     parent.append(this.root);
   }
 
-  /** Lets the lock button release itself when nothing is targeted. */
+  /** Locked on or view locked, so the evade button can say what it will do. */
   setLockQuery(isLocked: () => boolean): void {
     this.isLocked = isLocked;
   }
 
   /** One fixed step's worth of input. `time` is real time. */
   poll(time: number): DeviceFrame {
-    // A lock tap with nothing in range: hold it just long enough to recenter, then let go.
-    if (this.targetOn && time - this.targetSince > LOCK_GRACE && !this.isLocked()) this.setTarget(false, time);
-    if (this.targetOn && this.isLocked()) this.targetSince = time;
+    // The lock button is a toggle: with nothing in range it holds a view lock until tapped again.
     this.relabelEvade();
 
     const buttons: Partial<Record<Action, boolean>> = {};
@@ -119,7 +114,6 @@ export class TouchControls {
 
     this.touched = this.touchedSincePoll;
     this.touchedSincePoll = false;
-    this.pendingTime = time;
     return { stick: { ...this.stick }, buttons };
   }
 
@@ -151,7 +145,7 @@ export class TouchControls {
       capture(b, e.pointerId); // sliding off the button still releases it
       this.touchedSincePoll = true;
       if (def.toggle) {
-        this.setTarget(!this.targetOn, this.pendingTime);
+        this.setTarget(!this.targetOn);
         return;
       }
       this.held.add(def.action);
@@ -177,9 +171,8 @@ export class TouchControls {
     b.setAttribute('aria-label', label);
   }
 
-  private setTarget(on: boolean, time: number): void {
+  private setTarget(on: boolean): void {
     this.targetOn = on;
-    this.targetSince = time;
     this.buttons.get(Action.Target)?.classList.toggle('touch-btn-on', on);
   }
 

@@ -3,12 +3,22 @@ import type { FxCue, FxCueData, FxSink } from '../feel/CombatFeel';
 
 type Bus = 'player' | 'world';
 
-/** Lock-on chime: E6, B6, E7 (Hz). */
-const LOCK_ON_NOTES = [1318.5, 1975.5, 2637];
+/** Recorded sounds in public/sfx, with the level each plays at. */
+const SAMPLES = {
+  slash1: { file: 'TP_Sword_Slash1.wav', level: 0.8 },
+  slash2: { file: 'TP_Sword_Slash2.wav', level: 0.8 },
+  jumpAttack: { file: 'TP_Sword_JumpAttack.wav', level: 0.6 },
+  lockOn: { file: 'TP_ZTarget_On.wav', level: 1 },
+  lockOff: { file: 'TP_ZTarget_Off.wav', level: 1 },
+  viewOn: { file: 'TP_ViewLock_On.wav', level: 0.6 },
+  viewOff: { file: 'TP_ViewLock_Off.wav', level: 0.6 },
+} as const;
+type Sample = keyof typeof SAMPLES;
 
 /**
- * Procedural sound: every effect is built from oscillators and filtered noise, so there
- * are no audio files to load. Two buses:
+ * Sound, mostly procedural: hits, blocks and counters are built from oscillators and
+ * filtered noise. Swings and the lock-on and view-lock sounds are short recordings in
+ * public/sfx, fetched once the audio context starts. Two buses:
  *   player  her sounds, always clear
  *   world   enemies and ambience, through a low-pass that PostGrade sweeps in slow-mo
  *
@@ -21,6 +31,9 @@ export class SoundFx implements FxSink {
   private buses!: Record<Bus, AudioNode>;
   private lowpass!: BiquadFilterNode;
   private noise!: AudioBuffer;
+  private samples = new Map<Sample, AudioBuffer>();
+  /** Plain swings alternate between the two slash recordings. */
+  private nextSlash: 'slash1' | 'slash2' = 'slash1';
   private muted = false;
 
   constructor() {
@@ -87,29 +100,30 @@ export class SoundFx implements FxSink {
     }
   }
 
-  /** Her swing (attackStarted). Quiet, so hits and counters stay on top. */
-  swing(): void {
-    if (this.ctx) this.noise1('bandpass', 900, 1600, 1.5, 0.12, 'player', 0.12, this.ctx.currentTime, 0.02);
+  /** Her swing (attackStarted). The jump attack has its own; the rest alternate. */
+  swing(attack: AttackId): void {
+    if (attack === AttackId.JumpAttack) {
+      this.sample('jumpAttack');
+      return;
+    }
+    // A little pitch drift so a long combo doesn't sound like a loop.
+    this.sample(this.nextSlash, 0.97 + Math.random() * 0.06);
+    this.nextSlash = this.nextSlash === 'slash1' ? 'slash2' : 'slash1';
   }
 
-  /**
-   * Lock-on, in the spirit of Zelda's Z-target: a quick rising chime of three bell notes
-   * (E, B, E an octave up) with a short bright shimmer swept up under them.
-   */
+  /** Z-target lock on. */
   lockOn(): void {
-    if (!this.ctx) return;
-    const t = this.ctx.currentTime;
-    LOCK_ON_NOTES.forEach((hz, i) => this.partials(t + i * 0.045, hz, [1, 2.01], 0.32 - i * 0.04, 0.1, 'player'));
-    this.noise1('highpass', 2500, 7000, 0.8, 0.12, 'player', 0.06, t, 0.01);
+    this.sample('lockOn');
   }
 
-  /** Lock released: a soft two-note fall. Lower and quieter when the target was lost. */
+  /** Lock released. A touch lower when the target was lost rather than let go. */
   lockOff(lost: boolean): void {
-    if (!this.ctx) return;
-    const t = this.ctx.currentTime;
-    const k = lost ? 0.75 : 1;
-    this.tone('sine', 1320 * k, 1250 * k, 0.09, 'player', 0.05, t, 0.004);
-    this.tone('sine', 880 * k, 820 * k, 0.16, 'player', 0.05 * k, t + 0.06, 0.004);
+    this.sample('lockOff', lost ? 0.9 : 1);
+  }
+
+  /** Target held with nothing in range: the camera snaps behind her. */
+  viewLock(on: boolean): void {
+    this.sample(on ? 'viewOn' : 'viewOff');
   }
 
   /** Enemy telegraph: a bright ting for a glint, a low swell for an unblockable. */
@@ -181,6 +195,27 @@ export class SoundFx implements FxSink {
 
   // ----------------------------------------------------------- building blocks
 
+  /** Plays a recording on her bus. Skipped if it hasn't finished loading. */
+  private sample(name: Sample, rate = 1): void {
+    const buffer = this.samples.get(name);
+    if (!this.ctx || !buffer) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buffer;
+    src.playbackRate.value = rate;
+    src.connect(this.gain(SAMPLES[name].level, 'player'));
+    src.start();
+  }
+
+  private loadSamples(ctx: AudioContext): void {
+    for (const [name, { file }] of Object.entries(SAMPLES) as Array<[Sample, (typeof SAMPLES)[Sample]]>) {
+      fetch(`sfx/${file}`)
+        .then((r) => r.arrayBuffer())
+        .then((data) => ctx.decodeAudioData(data))
+        .then((buffer) => this.samples.set(name, buffer))
+        .catch(() => console.warn(`sound: couldn't load ${file}`));
+    }
+  }
+
   private tone(type: OscillatorType, from: number, to: number, dur: number, bus: Bus, level: number, t: number, attack = 0.005): void {
     const ctx = this.ctx!;
     const osc = ctx.createOscillator();
@@ -246,6 +281,8 @@ export class SoundFx implements FxSink {
     this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const d = this.noise.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+
+    this.loadSamples(ctx);
   }
 }
 

@@ -26,7 +26,7 @@ export function readIntent(ctx: PlayerContext, opts: ResolveOptions): Intent {
       input: ctx.input,
       camera: ctx.camera,
       facing: ctx.motor.facing,
-      locked: ctx.targeting.isLocked,
+      locked: lockStance(ctx),
       grounded: ctx.motor.grounded,
       dirDeadzone: ctx.tuning.dirDeadzone,
       untargetedFrame: ctx.tuning.untargetedFrame,
@@ -60,9 +60,18 @@ export function freeRunSpeed(ctx: PlayerContext, mag: number): number {
   return mag >= ctx.tuning.dirDeadzone ? ctx.tuning.runSpeed * mag : 0;
 }
 
-/** Locked: face the target. Free: face the stick (if pushed). */
+/**
+ * Target button on, with or without an enemy: she strafes, side hops and backflips
+ * instead of running and rolling, and directions are read from her facing.
+ */
+export function lockStance(ctx: PlayerContext): boolean {
+  return ctx.targeting.isLocked || ctx.targeting.isViewLocked;
+}
+
+/** Locked: face the target. View locked: hold her facing. Free: face the stick (if pushed). */
 export function steerFacing(ctx: PlayerContext, move: Vec2, dt: number): void {
   const toTarget = ctx.targeting.isLocked ? ctx.targeting.directionToTarget() : null;
   if (toTarget) ctx.motor.turnToward(toTarget, ctx.tuning.lockTurnRate, dt);
+  else if (ctx.targeting.isViewLocked) return;
   else if (length(move) >= ctx.tuning.dirDeadzone) ctx.motor.turnToward(move, ctx.tuning.turnRate, dt);
 }

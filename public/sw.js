@@ -6,7 +6,9 @@
  * cache, refreshed in the background. Bump CACHE to drop old files after a breaking change.
  */
 const CACHE = 'kira-v1';
-const SHELL = ['/', '/manifest.webmanifest', '/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/models/anime_head.glb', '/models/base_body.glb'];
+const SHELL = ['/', '/manifest.webmanifest', '/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/models/anime_head.glb', '/models/base_body.glb',
+  '/sfx/TP_Sword_Slash1.wav', '/sfx/TP_Sword_Slash2.wav', '/sfx/TP_Sword_JumpAttack.wav',
+  '/sfx/TP_ZTarget_On.wav', '/sfx/TP_ZTarget_Off.wav', '/sfx/TP_ViewLock_On.wav', '/sfx/TP_ViewLock_Off.wav'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
