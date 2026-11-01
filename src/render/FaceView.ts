@@ -23,8 +23,9 @@ export interface FaceLook {
 }
 
 /**
- * Scene brightness for the eyes, shared by every face. The shader is unlit, so on a dark
- * stage the whites would glow; the stage sets this (src/render/stages).
+ * How much light reaches her face, shared by every face. The shader is unlit, so without
+ * this the whites would glow in shade and on dark stages. The game sets it every frame
+ * from the stage's lights and the way her face points (src/render/stages/faceLight.ts).
  */
 const faceLight = { value: 1 };
 
@@ -179,7 +180,9 @@ const FRAG = /* glsl */ `
     by += uAngry * (-0.52 * bInner + 0.18 * (1.0 - bInner));
     by -= uFrown * (0.22 + 0.22 * bInner);
     by += uPain * (0.5 * bInner - 0.08);
-    float bth = mix(0.22, 0.07, clamp((bx + 1.0) / 2.1, 0.0, 1.0));
+    // Full at the inner end, tapering to a point outward. Thick enough to read at play
+    // distance; the lower edge still clears the lashes.
+    float bth = mix(0.42, 0.16, clamp((bx + 1.0) / 2.1, 0.0, 1.0));
     float ends = smoothstep(-1.05, -0.9, bx) * (1.0 - smoothstep(0.9, 1.12, bx));
     over(c, uLash, stroke(q.y - by, bth * 0.5, aa) * ends);
 

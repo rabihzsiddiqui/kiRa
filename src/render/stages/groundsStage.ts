@@ -38,7 +38,6 @@ interface GroundsPreset {
   fog: { color: number; near: number; far: number };
   exposure: number;
   bloom: { strength: number; threshold: number };
-  faceLight: number;
   envIntensity: number;
   terrain: TerrainLook;
   greens: { pine: number; leaf: number };
@@ -67,7 +66,6 @@ const DAY: GroundsPreset = {
   fog: { color: 0xc4d7e6, near: 60, far: 560 },
   exposure: 1.0,
   bloom: { strength: 0.32, threshold: 1.05 },
-  faceLight: 0.92,
   envIntensity: 0.55,
   terrain: { grass: 0x5f8f3c, grassDry: 0x9a9a52, rock: 0x8a8580, snow: 0xf4f6fa },
   greens: { pine: 0x2f5a35, leaf: 0x4f7f34 },
@@ -95,13 +93,21 @@ const DUSK: GroundsPreset = {
   fog: { color: 0xd09a82, near: 50, far: 480 },
   exposure: 1.12,
   bloom: { strength: 0.4, threshold: 0.95 },
-  faceLight: 0.78,
   envIntensity: 0.6,
   terrain: { grass: 0x51703a, grassDry: 0x8b7a4a, rock: 0x7d6f72, snow: 0xf6d6c8 },
   greens: { pine: 0x2b4a33, leaf: 0x46662f },
   lit: true,
   windowGlow: 1.6,
 };
+
+/** Rough average of the sky dome's brightness: horizon, zenith and the haze below. */
+function skyLuma(sky: SkyLook): number {
+  const l = (hex: number) => {
+    const c = new THREE.Color(hex);
+    return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  };
+  return (l(sky.horizon) + l(sky.zenith) + l(sky.ground)) / 3;
+}
 
 export const buildGroundsDay = (layout: ArenaLayout, opts: StageOptions) => buildGrounds(layout, opts, DAY);
 export const buildGroundsDusk = (layout: ArenaLayout, opts: StageOptions) => buildGrounds(layout, opts, DUSK);
@@ -336,9 +342,9 @@ function buildGrounds(layout: ArenaLayout, opts: StageOptions, p: GroundsPreset)
     fog: new THREE.Fog(p.fog.color, p.fog.near, p.fog.far),
     exposure: p.exposure,
     bloom: p.bloom,
-    faceLight: p.faceLight,
     envScene,
     envIntensity: p.envIntensity,
+    envLuma: skyLuma(p.sky),
     update: (t) => updates.forEach((u) => u(t)),
     dispose: () => {
       disposeTree(root);

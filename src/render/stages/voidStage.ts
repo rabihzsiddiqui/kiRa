@@ -71,10 +71,9 @@ export function buildVoidStage(layout: ArenaLayout, _opts: StageOptions): BuiltS
     fog: new THREE.Fog(COLORS.background, 14, 42),
     exposure: 1,
     bloom: { strength: 0.55, threshold: 0.88 },
-    // Unlit eyes glow against a dark scene; dim them to sit with the rest of her.
-    faceLight: 0.5,
     envScene: null,
     envIntensity: 1,
+    envLuma: 0,
     update: () => {},
     dispose: () => disposeTree(root),
   };

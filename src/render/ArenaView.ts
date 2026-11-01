@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import type { ArenaLayout } from '../app/arena';
 import type { StageId } from '../app/stages';
-import { setFaceLight } from './FaceView';
-import { STAGE_BUILDERS, type BuiltStage } from './stages';
+import { faceLighting, STAGE_BUILDERS, type BuiltStage } from './stages';
 
 /** What PostFx needs to know when the stage changes. */
 export interface StageLook {
@@ -21,6 +20,7 @@ export class ArenaView {
   private stageId: StageId | null = null;
   private readonly pmrem: THREE.PMREMGenerator;
   private envTarget: THREE.WebGLRenderTarget | null = null;
+  private faceLightFor: (normal: THREE.Vector3) => number = () => 1;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -63,8 +63,13 @@ export class ArenaView {
     } else {
       this.scene.environment = null;
     }
-    setFaceLight(next.faceLight);
+    this.faceLightFor = faceLighting(next);
     return { bloom: next.bloom };
+  }
+
+  /** How bright her unlit eyes should be for a face pointing along `normal` (see faceLight.ts). */
+  faceLight(normal: THREE.Vector3): number {
+    return this.faceLightFor(normal);
   }
 
   /** Wind, clouds, flames. Real seconds. */

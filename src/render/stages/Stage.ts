@@ -15,11 +15,11 @@ export interface BuiltStage {
   exposure: number;
   /** Bloom tuned per stage: a sunlit floor is brighter than anything in the void. */
   bloom: { strength: number; threshold: number };
-  /** How bright her painted eyes are. The face shader is unlit, so it follows the stage. */
-  faceLight: number;
   /** Sky only, for image based lighting. ArenaView turns it into scene.environment. */
   envScene: THREE.Scene | null;
   envIntensity: number;
+  /** Average brightness (luma) of that sky, for lighting her unlit eyes (faceLight.ts). */
+  envLuma: number;
   /** Wind and clouds, on real seconds. */
   update(time: number): void;
   dispose(): void;

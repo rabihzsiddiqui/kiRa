@@ -18,6 +18,7 @@ import { DUMMY_HEAD_AT, DummyView } from '../render/DummyView';
 import { HitboxDebugView } from '../render/HitboxDebugView';
 import { PlayerView } from '../render/PlayerView';
 import { PostFx } from '../render/PostFx';
+import { setFaceLight } from '../render/FaceView';
 import { ThreeFx } from '../render/ThreeFx';
 import { ARENA } from './arena';
 import { CounterGlyph } from './CounterGlyph';
@@ -62,6 +63,7 @@ async function boot(): Promise<void> {
   /** Where she looks on the dummy: the middle of its sack head. */
   const DUMMY_HEAD = ARENA.dummy.height * DUMMY_HEAD_AT;
   const lookPoint = new THREE.Vector3();
+  const faceNormal = new THREE.Vector3();
   const hitboxes = new HitboxDebugView();
   hitboxes.visible = false; // V shows hit areas and hurtboxes
   arena.scene.add(playerView.root, dummyView.root, hitboxes.root);
@@ -259,6 +261,8 @@ async function boot(): Promise<void> {
     const at = look && planarTo3(look.position, look === game.dummy ? DUMMY_HEAD : 1.5);
     const p = game.player;
     playerView.lookAt(fxDt * game.time.playerScale, at ? lookPoint.set(at.x, at.y, at.z) : null, lookAllowed(p.state, p.attack?.attack ?? null, p.evade));
+    // Her eyes are unlit paint: light them like her skin, from the way her face points.
+    setFaceLight(arena.faceLight(playerView.faceDirection(faceNormal)));
     // Her face: a little angry near an enemy and locked on, a frown when she swings.
     playerView.face(fxDt * game.time.playerScale, {
       alert: game.targeting.targetNearby && !game.targeting.isLocked,

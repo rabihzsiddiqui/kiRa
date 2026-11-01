@@ -57,6 +57,11 @@ export class PlayerView {
    * animated pose; see character/headLook.ts for when and how far. `allowed` false (a spin,
    * a roll) or no point fades it out. Call after sync(), every frame. `dt` on her clock.
    */
+  /** Where her face points (world, unit), after the head look. For lighting her eyes. */
+  faceDirection(out: THREE.Vector3): THREE.Vector3 {
+    return forwardOf(this.figure.bones.head, out);
+  }
+
   lookAt(dt: number, point: THREE.Vector3 | null, allowed: boolean): void {
     const { neck, head, chest } = this.figure.bones;
     // The mixer doesn't pose the bones on every display frame. If they still hold what this

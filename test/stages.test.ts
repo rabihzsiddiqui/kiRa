@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { ARENA } from '../src/app/arena';
 import { DEFAULT_STAGE, initialStage, parseStage, STAGES, type StageId } from '../src/app/stages';
 import { planarTo3 } from '../src/physics/space';
-import { STAGE_BUILDERS } from '../src/render/stages';
+import { faceLighting, STAGE_BUILDERS } from '../src/render/stages';
 import { FLAT_RADIUS, scatterTrees, terrainHeight, terrainMesh } from '../src/render/stages/terrain';
 
 /*
@@ -139,9 +139,20 @@ test('grounds: banners hang above her head; dusk lights the braziers, day does n
   dusk.dispose();
 });
 
-test('her eyes are dimmer on darker stages (the face shader is unlit)', () => {
+test('her eyes take the light her face gets: bright toward the sun, dim in shade and in the void', () => {
   const [day, dusk, dark] = (['grounds', 'dusk', 'void'] as const).map(build);
-  assert.ok(day.faceLight > dusk.faceLight && dusk.faceLight > dark.faceLight);
-  assert.ok(dark.faceLight < 0.75);
+  const eyes = (s: ReturnType<typeof build>, x: number, z: number) => faceLighting(s)(new THREE.Vector3(x, 0.2, z).normalize());
+  // Facing the dummy from the spawn is -z; the camera (and the day sun) is behind her, +z.
+  const dayToSun = eyes(day, 0, 1);
+  const dayShade = eyes(day, 0, -1);
+  assert.ok(dayToSun > 0.85, `day, facing the sun: ${dayToSun.toFixed(2)}`);
+  assert.ok(dayShade < dayToSun * 0.6, `day, face in shade: ${dayShade.toFixed(2)}`);
+  // Dusk: the low sun is ahead of her; it lights her face less than the midday sun does.
+  const duskToSun = eyes(dusk, 0, -1);
+  assert.ok(duskToSun < dayToSun && eyes(dusk, 0, 1) < duskToSun, `dusk ${duskToSun.toFixed(2)}`);
+  assert.ok(eyes(dusk, 0, 1) < 0.35);
+  // The void: no stronger than shade at noon, whichever way she faces.
+  for (const [x, z] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) assert.ok(eyes(dark, x, z) <= 0.5, `void ${x},${z}`);
+  assert.ok(eyes(dark, 0, -1) < 0.25, 'void, facing the dummy (key light behind her)');
   for (const s of [day, dusk, dark]) s.dispose();
 });
