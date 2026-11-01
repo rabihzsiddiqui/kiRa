@@ -98,11 +98,14 @@ test('mixed inputs flow from where the blade is: forehand (ends left) into a \\ 
 test('the ender closes the combo: mashing through it adds no 5th hit, the next press opens a new combo', () => {
   const sb = new HeadlessSandbox();
   chain(sb, [N, N, N, N], {}, false);
-  for (let i = 0; i < 28; i++) sb.step({ attack: i % 4 === 0 }); // mashing through the ender
+  // Mashing through the ender (stopping early enough that the last press has left the
+  // input buffer by the time the ender is over).
+  for (let i = 0; i < 16; i++) sb.step({ attack: i % 4 === 0 });
   assert.deepEqual(sb.attacks.slice(3), [AttackId.FinisherSpin]);
   assert.equal(sb.player.attack?.attack, AttackId.FinisherSpin, 'still in the ender');
 
-  sb.run(30);
+  sb.run(40);
+  assert.deepEqual(sb.attacks.slice(3), [AttackId.FinisherSpin], 'no 5th hit');
   sb.step({ attack: true });
   assert.equal(sb.attacks.at(-1), AttackId.Horizontal, 'fresh opener');
 });

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { COLORS } from './ArenaView';
+import { bladeMiddle, bladeShell, SHELL_SIDES } from './Katana';
 
 /** What the blade needs to know each frame. Read from the player, never written back. */
 export interface BladeChargeInput {
@@ -9,7 +10,7 @@ export interface BladeChargeInput {
   spinning: boolean;
 }
 
-/** The sword as built by CharacterFigure: hilt end and tip along the sword group's -Z. */
+/** The sword as built by CharacterFigure (see Katana.ts): hilt end and tip along the sword group's -Z. */
 export interface SwordLayout {
   group: THREE.Group;
   /** Sword-space z of the blade's hilt end and tip. */
@@ -27,19 +28,23 @@ const WHITE = new THREE.Color(1, 1, 1);
  * more. When the sparkle reaches the tip the whole blade lights up with energy (bright
  * enough to bloom, plus a small light on her) and stays lit through the spin.
  *
+ * The glows are shells shaped like the katana's blade (Katana.ts: its curve, taper and
+ * point), and the sparkle and motes ride the middle of the blade, so it all sits on the
+ * steel rather than on a straight line beside it.
+ *
  * Pure presentation: it reads the charge progress, it never changes gameplay. Everything
  * hangs off the sword and is tagged noGhost, so perfect dodge afterimages skip it.
  */
+const GLOW_STATIONS = 40;
 export class BladeCharge {
   private readonly root = new THREE.Group();
-  private readonly trail: THREE.Mesh<THREE.BoxGeometry, THREE.MeshBasicMaterial>;
-  private readonly energyMesh: THREE.Mesh<THREE.BoxGeometry, THREE.MeshBasicMaterial>;
+  private readonly trail: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+  private readonly energyMesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
   private readonly sparkle: THREE.Sprite;
   private readonly motes: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>;
   private readonly moteVel = new Float32Array(MOTES * 3);
   private readonly moteLife = new Float32Array(MOTES);
   private readonly light = new THREE.PointLight(COLORS.cyan, 0, 2.5, 2);
-  private readonly length: number;
 
   private energy = 0;
   private flare = 0;
@@ -52,20 +57,19 @@ export class BladeCharge {
     private readonly sword: SwordLayout,
     private readonly reducedMotion: boolean,
   ) {
-    const { group, hiltZ, tipZ } = sword;
-    this.length = hiltZ - tipZ;
+    const { group } = sword;
     this.root.userData.noGhost = true;
     group.add(this.root);
 
-    // Both glows are built with their origin at the hilt end, so scale.z fills toward the tip.
-    const along = (w: number, h: number) => new THREE.BoxGeometry(w, h, this.length).translate(0, 0, -this.length / 2);
+    // Glows shaped like the blade: a close one that fills hilt to tip as the charge
+    // builds (drawn up to the charge), and a fuller one for the lit blade.
     const additive = () =>
       new THREE.MeshBasicMaterial({ color: CYAN, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
-    this.trail = new THREE.Mesh(along(0.03, 0.062), additive());
-    this.energyMesh = new THREE.Mesh(along(0.05, 0.09), additive());
+    this.trail = new THREE.Mesh(bladeShell(0.004, GLOW_STATIONS), additive());
+    this.energyMesh = new THREE.Mesh(bladeShell(0.011, GLOW_STATIONS), additive());
     for (const m of [this.trail, this.energyMesh]) {
-      m.position.z = hiltZ;
       m.renderOrder = 10;
+      m.frustumCulled = false;
       this.root.add(m);
     }
 
@@ -85,7 +89,8 @@ export class BladeCharge {
     this.motes.frustumCulled = false;
     this.root.add(this.motes);
 
-    this.light.position.z = (hiltZ + tipZ) / 2;
+    const mid = bladeMiddle(0.5);
+    this.light.position.set(0, mid.y, mid.z);
     this.root.add(this.light);
   }
 
@@ -105,15 +110,15 @@ export class BladeCharge {
 
     // The sparkle rides the charge from hilt to tip, twinkling.
     const fill = charging ? Math.min(1, charge) : 0;
-    const z = this.sword.hiltZ - this.length * fill;
+    const along = bladeMiddle(fill);
     const twinkle = 0.75 + 0.25 * Math.sin(this.t * 31) * Math.sin(this.t * 17);
-    this.sparkle.position.set(0, 0, z);
+    this.sparkle.position.set(0, along.y, along.z);
     this.sparkle.material.opacity = charging ? (full ? 0.9 : 1) : Math.max(0, this.flare);
     this.sparkle.material.rotation = this.t * 2;
     this.sparkle.scale.setScalar((charging && !full ? 0.11 * twinkle : 0.08) + 0.3 * this.flare);
 
     // A faint trail behind the sparkle shows how far the charge has come.
-    this.trail.scale.z = Math.max(1e-3, fill);
+    this.trail.geometry.setDrawRange(0, Math.round(fill * GLOW_STATIONS) * SHELL_SIDES * 6);
     this.trail.material.opacity = charging && !full ? 0.35 : 0;
 
     // Full energy: hot core, slow pulse. Colors above 1 so the bloom pass picks it up.
@@ -127,8 +132,7 @@ export class BladeCharge {
     this.emitTimer -= dt;
     if ((charging || this.energy > 0.5) && this.emitTimer <= 0) {
       this.emitTimer = this.reducedMotion ? 0.08 : 0.035;
-      const at = full || !charging ? this.sword.hiltZ - Math.random() * this.length : z;
-      this.emit(at, 0.25);
+      this.emit(full || !charging ? Math.random() : fill, 0.25);
     }
     this.updateMotes(dt);
 
@@ -142,14 +146,16 @@ export class BladeCharge {
   /** Sparkle reaches the tip: flare and a spray of motes. */
   private burst(): void {
     this.flare = 1;
-    for (let i = 0; i < 12; i++) this.emit(this.sword.tipZ + Math.random() * 0.15, 0.8);
+    for (let i = 0; i < 12; i++) this.emit(1 - Math.random() * 0.15, 0.8);
   }
 
-  private emit(z: number, speed: number): void {
+  /** A mote off the blade at `u` along it (0 = hilt, 1 = tip). */
+  private emit(u: number, speed: number): void {
     const i = this.nextMote;
     this.nextMote = (i + 1) % MOTES;
     const pos = this.motes.geometry.attributes.position as THREE.BufferAttribute;
-    pos.setXYZ(i, (Math.random() - 0.5) * 0.02, (Math.random() - 0.5) * 0.04, z);
+    const at = bladeMiddle(u);
+    pos.setXYZ(i, (Math.random() - 0.5) * 0.01, at.y + (Math.random() - 0.5) * 0.03, at.z);
     const a = Math.random() * Math.PI * 2;
     this.moteVel.set([Math.cos(a) * speed, Math.sin(a) * speed, (Math.random() - 0.5) * speed * 0.3], i * 3);
     this.moteLife[i] = 1;

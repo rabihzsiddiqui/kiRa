@@ -134,21 +134,23 @@ export const ATTACKS: Readonly<Record<AttackId, AttackDef>> = {
     poiseDamage: 15,
     hit: { kind: 'line', range: 2.6, width: 0.4 },
   },
+  // Spins: one fast turn (0.5 s in all) with a long reach: 3 m, well past the blade. The
+  // spin trail (feel/swingTrail.ts) runs out to the same distance, so the reach shows.
   [AttackId.Spin]: {
     id: AttackId.Spin, anim: 'atk_spin', damage: 2,
-    startup: 0.08, active: 0.35, recovery: 0.35,
-    comboOpen: Infinity, evadeCancel: 0.6, blockCancel: 0.6,
+    startup: 0.04, active: 0.22, recovery: 0.24,
+    comboOpen: Infinity, evadeCancel: 0.4, blockCancel: 0.4,
     lunge: 1, tracking: 0, endSide: 'left', chargeable: false,
     poiseDamage: 25,
-    hit: { kind: 'arc', range: 2.4, arcDeg: 360 },
+    hit: { kind: 'arc', range: 3, arcDeg: 360 },
   },
   [AttackId.SpinClockwise]: {
     id: AttackId.SpinClockwise, anim: 'atk_spin_clockwise', damage: 2,
-    startup: 0.08, active: 0.35, recovery: 0.35,
-    comboOpen: Infinity, evadeCancel: 0.6, blockCancel: 0.6,
+    startup: 0.04, active: 0.22, recovery: 0.24,
+    comboOpen: Infinity, evadeCancel: 0.4, blockCancel: 0.4,
     lunge: 1, tracking: 0, endSide: 'right', chargeable: false,
     poiseDamage: 25,
-    hit: { kind: 'arc', range: 2.4, arcDeg: 360 },
+    hit: { kind: 'arc', range: 3, arcDeg: 360 },
   },
   [AttackId.JumpAttack]: {
     id: AttackId.JumpAttack, anim: 'atk_jump', damage: 2,
@@ -182,8 +184,8 @@ export const ATTACKS: Readonly<Record<AttackId, AttackDef>> = {
   // ---- combo enders. Heavier, slower to recover, and they end the combo.
   [AttackId.FinisherSpin]: {
     id: AttackId.FinisherSpin, anim: 'atk_finisher_spin', damage: 2.5,
-    startup: 0.12, active: 0.22, recovery: 0.4,
-    comboOpen: Infinity, evadeCancel: 0.5, blockCancel: 0.55,
+    startup: 0.08, active: 0.18, recovery: 0.32,
+    comboOpen: Infinity, evadeCancel: 0.42, blockCancel: 0.46,
     lunge: 3, tracking: 10, endSide: 'left', chargeable: false,
     poiseDamage: 30,
     hit: { kind: 'arc', range: 2.3, arcDeg: 360 },

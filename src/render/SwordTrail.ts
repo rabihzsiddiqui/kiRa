@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { AttackId } from '../combat/moves';
-import { trailStyle, type TrailStyle } from '../feel/swingTrail';
+import { spinWave, trailStyle, wavePoints, type SpinWave, type TrailStyle } from '../feel/swingTrail';
 import type { SwordLayout } from './BladeCharge';
 
 /** What the trail needs each frame. Read from the player, never written back. */
@@ -12,8 +12,60 @@ export interface SwordTrailInput {
 }
 
 const MAX_POINTS = 160;
-/** Extra points between two frames' blade positions, so fast swings curve instead of zigzag. */
-const SUBDIVIDE = 4;
+
+/**
+ * What a trail follows: its look for a given attack (null = none), and its two edges this
+ * frame (false = skip the frame). The default follows the blade, hilt side to tip.
+ */
+export interface TrailSource {
+  style(attack: AttackId): TrailStyle | null;
+  edges(style: TrailStyle, base: THREE.Vector3, tip: THREE.Vector3): boolean;
+  /** Extra points between two frames' samples, so fast swings curve instead of zigzag. */
+  subdivide: number;
+}
+
+/** The blade, from `base` along it to `reach` past the tip (see TrailStyle). */
+export function bladeSource(sword: SwordLayout): TrailSource {
+  const hilt = new THREE.Vector3();
+  return {
+    style: trailStyle,
+    subdivide: 4,
+    edges: (style, base, tip) => {
+      sword.group.localToWorld(hilt.set(0, 0, sword.hiltZ));
+      sword.group.localToWorld(tip.set(0, 0, sword.tipZ));
+      const blade = tip.clone().sub(hilt);
+      base.copy(hilt).addScaledVector(blade, style.base);
+      tip.addScaledVector(blade, style.reach);
+      return true;
+    },
+  };
+}
+
+/**
+ * The spin's wave (see spinWave in feel/swingTrail.ts): a band out at the edge of the
+ * spin's hit range, pointing where the blade points, so it sweeps a circle round her.
+ * `center` is her position (feet), world space.
+ */
+export function waveSource(sword: SwordLayout, center: () => THREE.Vector3): TrailSource {
+  const tipWorld = new THREE.Vector3();
+  let wave: SpinWave | null = null;
+  return {
+    style: (attack) => {
+      wave = spinWave(attack);
+      return wave?.style ?? null;
+    },
+    subdivide: 8, // big radius, big steps per frame: more in-betweens keep it round
+    edges: (_style, base, tip) => {
+      if (!wave) return false;
+      sword.group.localToWorld(tipWorld.set(0, 0, sword.tipZ));
+      const p = wavePoints(center(), tipWorld, wave);
+      if (!p) return false;
+      base.set(p.inner.x, p.inner.y, p.inner.z);
+      tip.set(p.outer.x, p.outer.y, p.outer.z);
+      return true;
+    },
+  };
+}
 
 interface TrailPoint {
   base: THREE.Vector3;
@@ -48,9 +100,11 @@ export class SwordTrail {
   private lastAttack: AttackId | null = null;
   private wasEmitting = false;
   private time = 0;
-  private readonly v = { hilt: new THREE.Vector3(), tip: new THREE.Vector3(), c: new THREE.Color() };
+  private readonly v = { base: new THREE.Vector3(), tip: new THREE.Vector3(), c: new THREE.Color() };
+  private readonly source: TrailSource;
 
-  constructor(private readonly sword: SwordLayout) {
+  constructor(sword: SwordLayout, source?: TrailSource) {
+    this.source = source ?? bladeSource(sword);
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute('aParams', new THREE.BufferAttribute(this.params, 4).setUsage(THREE.DynamicDrawUsage));
@@ -86,28 +140,27 @@ export class SwordTrail {
     for (const p of this.points) p.age += dt;
     while (this.points.length && this.points[0].age >= this.points[0].life) this.points.shift();
 
-    const emitting = input.emitting && input.attack !== null;
+    const style = input.emitting && input.attack !== null ? this.source.style(input.attack) : null;
+    const emitting = style !== null;
     if (emitting && (!this.wasEmitting || input.attack !== this.lastAttack)) {
       this.swing++; // a new swing: start a separate ribbon
       this.history.length = 0;
     }
-    if (emitting) this.sample(trailStyle(input.attack!));
+    if (style) this.sample(style);
     this.wasEmitting = emitting;
     this.lastAttack = input.attack;
 
     this.rebuild();
   }
 
-  /** Adds this frame's blade, with curved in-between points from the last frame's. */
+  /** Adds this frame's edges, with curved in-between points from the last frame's. */
   private sample(style: TrailStyle): void {
-    const { group, hiltZ, tipZ } = this.sword;
-    const { hilt, tip } = this.v;
-    group.localToWorld(hilt.set(0, 0, hiltZ));
-    group.localToWorld(tip.set(0, 0, tipZ));
+    const { base, tip } = this.v;
+    if (!this.source.edges(style, base, tip)) return;
     // A bad frame (non-finite pose) must never reach the GPU: it would draw as NaN.
-    if (![hilt.x, hilt.y, hilt.z, tip.x, tip.y, tip.z].every(Number.isFinite)) return;
-    const blade = tip.clone().sub(hilt);
-    const now = { base: hilt.clone().addScaledVector(blade, style.base), tip: tip.clone().addScaledVector(blade, style.reach) };
+    if (![base.x, base.y, base.z, tip.x, tip.y, tip.z].every(Number.isFinite)) return;
+    const now = { base: base.clone(), tip: tip.clone() };
+    const SUBDIVIDE = this.source.subdivide;
 
     const h = this.history;
     if (h.length >= 1) {

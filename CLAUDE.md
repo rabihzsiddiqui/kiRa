@@ -28,14 +28,14 @@ src/player      PlayerController, contracts (all interfaces + tuning), states/
 src/physics     CharacterMotor implementations (SimpleMotor, RapierMotor), RapierCameraProbe, planar <-> 3D mapping (space.ts)
 src/feel        CombatFeel: events -> slow-mo, hit stop, FX cues. PostGrade: cues + world clock -> screen/audio grade
 src/enemies     enemy attack strings (data) and TrainingDummyAI. Engine-free, world clock
-src/character   rig (bones, Mixamo names), clips (every animation as data), fk (puts poses on the floor). Engine-free
+src/character   rig (bones, Mixamo names), clips (every animation as data), fk (puts poses on the floor), bodyFit (rigs the base body mesh), shell + armorFit + hairFit (armor and hair measured off it). Engine-free
 src/camera      CameraRig: orbit, lock-on framing, spring arm, cue reactions. Engine-free, outputs a CameraPose
 src/sandbox     HeadlessSandbox (used by tests, shows the frame order)
 src/render      three.js: scene, CharacterFigure + PlayerView, dummy view, ThreeAnimator (mixer), CameraView, PostFx, ThreeFx
 src/audio       SoundFx: procedural Web Audio, an FxSink like ThreeFx
 src/app         browser composition root: main.ts (loop), Game.ts (sim step), arena, devices (keyboard, gamepad, rumble), overlay, gallery.ts
 test/           scenario tests driven by frame-by-frame input, motor tests, import boundary check
-public/         PWA: manifest, icons, service worker (production builds only)
+public/         PWA: manifest, icons, service worker (production builds only); models/ (glTF assets)
 ```
 
 ## Hard rules

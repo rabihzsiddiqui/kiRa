@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { COLORS } from './ArenaView';
-import { buildFigure, type Figure } from './CharacterFigure';
+import { buildFigure, type BodyKind, type Figure } from './CharacterFigure';
 import { KEEP_COLOR_LAYER } from './PostFx';
 import type { ThreeAnimator } from './ThreeAnimator';
 
 /**
- * Her body: the rigged placeholder figure (animated by ThreeAnimator) with the katana on
- * the right-hand bone. `root` follows her feet; add it to the scene.
+ * Her body: the rigged figure (animated by ThreeAnimator) with the katana on the
+ * right-hand bone. `body` picks the skinned base mesh or the original shape-built body. `root` follows her feet; add it to the scene.
  */
 export class PlayerView {
   readonly root = new THREE.Group();
@@ -20,8 +20,8 @@ export class PlayerView {
   private readonly figure: Figure;
   private readonly dissolveMats: THREE.MeshStandardMaterial[];
 
-  constructor(animator: ThreeAnimator) {
-    this.figure = buildFigure();
+  constructor(animator: ThreeAnimator, body: BodyKind = 'mesh') {
+    this.figure = buildFigure(body);
     this.body = this.figure.root;
     this.sword = this.figure.sword;
     this.root.add(this.body);
@@ -38,8 +38,8 @@ export class PlayerView {
     this.root.position.set(x, y, z);
     this.root.rotation.y = yaw;
     this.root.updateMatrixWorld(true);
-    const blade = this.figure.blade;
-    blade.localToWorld(this.bladeTip.set(0, 0, -(blade.geometry as THREE.BoxGeometry).parameters.depth / 2));
+    const { group, tipZ } = this.sword;
+    group.localToWorld(this.bladeTip.set(0, 0, tipZ));
   }
 
   /** 0 = solid, 1 = mostly gone: see-through with a cyan glow (Phantom Dash). */

@@ -221,7 +221,7 @@ The camera runs on real time, so it stays smooth while the world crawls.
 
 ## 8. Hair
 
-Her hair is a chin-length bob with no simulation: one shell around the head plus locks laid over it (`src/render/HeadSculpt.ts`, `CharacterFigure.ts`). A ponytail verlet chain (`src/character/Ponytail.ts`, 120 Hz substeps on the player clock, follow-the-leader lengths, collision spheres) lived here until the redesign; restore it from commit 224c1c5 if a longer style comes back.
+On the skinned base mesh (the default body) she has the mesh's own head with a 2B-style side-parted bob: one rigid shell on the head, no simulation (`src/character/hairFit.ts`). The modeled anime head (`src/render/AnimeHead.ts`, `public/models/anime_head.glb`) sits on the classic body and can come back on the mesh body by cutting its neck (`keepHead: false`). The previous sculpted faceless head and its chin-length bob (`src/render/HeadSculpt.ts`: one shell plus locks laid over it) can be restored from commit 8ee94d3. A ponytail verlet chain (`src/character/Ponytail.ts`, 120 Hz substeps on the player clock, follow-the-leader lengths, collision spheres) lived here until the redesign; restore it from commit 224c1c5 if a longer style comes back.
 
 ---
 

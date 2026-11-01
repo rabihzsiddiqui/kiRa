@@ -9,7 +9,7 @@ import { planarFrom3 } from '../physics/space';
 import { AttackId } from '../combat/moves';
 import { ArenaView } from '../render/ArenaView';
 import { BladeCharge } from '../render/BladeCharge';
-import { SwordTrail } from '../render/SwordTrail';
+import { SwordTrail, waveSource } from '../render/SwordTrail';
 import { trailEmitting } from '../feel/swingTrail';
 import { CameraView } from '../render/CameraView';
 import { DummyView } from '../render/DummyView';
@@ -49,7 +49,9 @@ async function boot(): Promise<void> {
   // Phones: render at most 1.5x density. Fill rate is the bottleneck there, and the
   // post-processing stack runs at full resolution.
   if (devices.touch) arena.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-  const playerView = new PlayerView(game.animator);
+  // ?body=classic: the original shape-built body, for comparing with the skinned base mesh.
+  const body = new URLSearchParams(location.search).get('body') === 'classic' ? 'classic' : 'mesh';
+  const playerView = new PlayerView(game.animator, body);
   const dummyView = new DummyView(ARENA.dummy.position, ARENA.dummy.radius, ARENA.dummy.height);
   const hitboxes = new HitboxDebugView();
   hitboxes.visible = false; // V shows hit areas and hurtboxes
@@ -64,7 +66,9 @@ async function boot(): Promise<void> {
   game.dummyAI.events.on('telegraph', ({ step }) => sound.telegraph(!!step.attack.unblockable));
   const bladeCharge = new BladeCharge(playerView.sword, reducedMotion);
   const swordTrail = new SwordTrail(playerView.sword);
-  arena.scene.add(swordTrail.mesh);
+  // The spin's circle of energy, out at the edge of its reach, swept round with the blade.
+  const spinWave = new SwordTrail(playerView.sword, waveSource(playerView.sword, () => playerView.root.position));
+  arena.scene.add(swordTrail.mesh, spinWave.mesh);
   const post = new PostFx(arena.renderer, arena.scene, cameraView.camera, reducedMotion);
   const glyph = new CounterGlyph(document.body, game, devices);
   const chest = new THREE.Vector3();
@@ -214,7 +218,9 @@ async function boot(): Promise<void> {
       spinning: swing === AttackId.Spin || swing === AttackId.SpinClockwise,
     });
     // On her clock, so trails linger with her in slow-mo.
-    swordTrail.update(fxDt * game.time.playerScale, { attack: swing ?? null, emitting: trailEmitting(game.player.attack) });
+    const trailInput = { attack: swing ?? null, emitting: trailEmitting(game.player.attack) };
+    swordTrail.update(fxDt * game.time.playerScale, trailInput);
+    spinWave.update(fxDt * game.time.playerScale, trailInput);
     fx.update(fxDt, worldDt);
     const g = grade.update(fxDt, game.time.worldScale, game.targeting.isLocked);
     sound.setWorldLowpass(g.lowpassHz);

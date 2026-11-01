@@ -18,14 +18,9 @@ function bladeTipX(attack: AttackId, at: 'start' | 'end'): number {
   view.sync(0, 0, 0, 0);
   view.root.updateMatrixWorld(true);
 
-  let blade: THREE.Mesh | null = null;
-  view.root.traverse((o) => {
-    if (o instanceof THREE.Mesh && o.geometry instanceof THREE.BoxGeometry && o.geometry.parameters.depth > 0.9) blade = o;
-  });
-  assert.ok(blade, 'found the blade');
-  // Tip = far end of the blade along its local -Z.
-  const b = blade as THREE.Mesh;
-  return b.localToWorld(new THREE.Vector3(0, 0, -(b.geometry as THREE.BoxGeometry).parameters.depth / 2)).x;
+  // Tip = the far end of the blade along the sword's axis.
+  const { group, tipZ } = view.sword;
+  return group.localToWorld(new THREE.Vector3(0, 0, tipZ)).x;
 }
 
 test('reverse horizontal (right + attack) sweeps the blade from her left to her right', () => {

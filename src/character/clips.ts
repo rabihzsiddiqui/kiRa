@@ -92,7 +92,16 @@ const GUARD: Pose = {
 };
 
 /** Arm out forward with the blade level: the base of every horizontal swing. */
-const armOut = (shoulderYaw: number, chestYaw: number, extra: Partial<Record<BoneId, Euler>> = {}): Pose => ({
+/** Forearm roll that puts the edge first: right-to-left swings, and left-to-right. */
+const FOREHAND = -90;
+const BACKHAND = 90;
+
+/**
+ * Sword arm out to the side for flat cuts. `edgeRoll` turns the forearm (rolls the hand
+ * about the blade) so the cutting edge, not the flat, leads the swing: -90 for swings
+ * that travel right to left (forehand, counterclockwise spins), 90 for left to right.
+ */
+const armOut = (shoulderYaw: number, chestYaw: number, extra: Partial<Record<BoneId, Euler>> = {}, edgeRoll = 0): Pose => ({
   hipsY: -0.06,
   bones: {
     spine: [-8, chestYaw * 0.25, 0],
@@ -100,7 +109,7 @@ const armOut = (shoulderYaw: number, chestYaw: number, extra: Partial<Record<Bon
     shoulderR: [0, shoulderYaw, 0],
     upperArmR: [80, 0, 10],
     forearmR: [10, 0, 0],
-    handR: [-90, 0, 0],
+    handR: [-90, 0, edgeRoll],
     upperArmL: [25, 0, -20],
     forearmL: [30, 0, 0],
     thighL: [15, 0, 0],
@@ -371,7 +380,7 @@ const RISING_WINDUP: Pose = onGround({
     shoulderR: [0, 40, 0],
     upperArmR: [-10, 0, -40],
     forearmR: [30, 0, 0],
-    handR: [-120, 0, 0],
+    handR: [-120, 0, 140], // edge turned up: it cuts on the way up
     upperArmL: [20, 0, -30],
     forearmL: [40, 0, 0],
     thighL: [45, 0, 0],
@@ -389,7 +398,7 @@ const RISING_STRIKE: Pose = onGround({
     shoulderR: [0, -20, 0],
     upperArmR: [150, 0, 30],
     forearmR: [10, 0, 0],
-    handR: [-110, 0, 0],
+    handR: [-110, 0, 140],
     upperArmL: [10, 0, -45],
     forearmL: [30, 0, 0],
     thighL: [70, 0, 0],
@@ -556,9 +565,10 @@ function spinClip(id: AttackId.Spin | AttackId.SpinClockwise, turn: 1 | -1): Cli
     ...p,
     bones: { ...p.bones, spine: [-12, 0, s * 8] as Euler, neck: [0, s * 25, 0] as Euler }, // lean in, look ahead
   });
-  const coil = onGround(armOut(-s * 95, -s * 45, legs));
-  const sweep = onGround(lean(armOut(-s * 85, 0, legs)));
-  const follow = onGround(armOut(s * 55, s * 40, legs));
+  const roll = turn > 0 ? FOREHAND : BACKHAND; // edge first, whichever way she turns
+  const coil = onGround(armOut(-s * 95, -s * 45, legs, roll));
+  const sweep = onGround(lean(armOut(-s * 85, 0, legs, roll)));
+  const follow = onGround(armOut(s * 55, s * 40, legs, roll));
   const end = d.startup + d.active;
   const base = keyed([
     [0, coil],
@@ -585,9 +595,9 @@ function spinClip(id: AttackId.Spin | AttackId.SpinClockwise, turn: 1 | -1): Cli
 function finisherSpinClip(): ClipDef {
   const d = A[AttackId.FinisherSpin];
   const low = { thighL: [40, 0, -8] as Euler, shinL: [-45, 0, 0] as Euler, thighR: [-15, 0, 12] as Euler, shinR: [-40, 0, 0] as Euler };
-  const coil = onGround(armOut(-70, -45, low));
-  const out = onGround(armOut(-85, 0, low));
-  const follow = onGround(armOut(55, 40, low));
+  const coil = onGround(armOut(-70, -45, low, FOREHAND));
+  const out = onGround(armOut(-85, 0, low, FOREHAND));
+  const follow = onGround(armOut(55, 40, low, FOREHAND));
   const end = d.startup + d.active;
   const base = keyed([
     [0, coil],
@@ -608,9 +618,9 @@ function finisherSpinClip(): ClipDef {
 
 const attackClips: ClipDef[] = [
   // Forehand: blade sweeps from her right to her left.
-  attackClip(A[AttackId.Horizontal], armOut(-60, -35), armOut(55, 40, { thighR: [25, 0, 0], shinR: [-20, 0, 0] })),
+  attackClip(A[AttackId.Horizontal], armOut(-60, -35, {}, FOREHAND), armOut(55, 40, { thighR: [25, 0, 0], shinR: [-20, 0, 0] }, FOREHAND)),
   // Backhand: left to right.
-  attackClip(A[AttackId.ReverseHorizontal], armOut(70, 35), armOut(-60, -40, { thighR: [25, 0, 0], shinR: [-20, 0, 0] })),
+  attackClip(A[AttackId.ReverseHorizontal], armOut(70, 35, {}, BACKHAND), armOut(-60, -40, { thighR: [25, 0, 0], shinR: [-20, 0, 0] }, BACKHAND)),
   // Diagonals: "/" from over the right shoulder, "\" from over the left. A vertical combo alternates them.
   attackClip(A[AttackId.Vertical], DIAG_R_WINDUP, DIAG_R_STRIKE),
   attackClip(A[AttackId.VerticalLeft], DIAG_L_WINDUP, DIAG_L_STRIKE),
@@ -664,8 +674,8 @@ const attackClips: ClipDef[] = [
     sample: (() => {
       const d = A[AttackId.PhantomDash];
       const low = { spine: [-35, 0, 0] as Euler, thighL: [50, 0, 0] as Euler, shinL: [-40, 0, 0] as Euler, thighR: [-40, 0, 0] as Euler, shinR: [-20, 0, 0] as Euler };
-      const windup = { ...armOut(-70, -40, low), hipsY: -0.15 };
-      const strike = { ...armOut(60, 45, low), hipsY: -0.15 };
+      const windup = { ...armOut(-70, -40, low, FOREHAND), hipsY: -0.15 };
+      const strike = { ...armOut(60, 45, low, FOREHAND), hipsY: -0.15 };
       return keyed([
         [0, windup],
         [d.startup, windup],

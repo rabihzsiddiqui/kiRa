@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { ATTACKS, AttackId } from '../combat/moves';
 import type { FxCue, FxCueData, FxSink } from '../feel/CombatFeel';
 import { planarTo3 } from '../physics/space';
@@ -376,6 +377,7 @@ export class ThreeFx implements FxSink {
 }
 
 const RING_GEOMETRY = new THREE.RingGeometry(0.9, 1, 64);
+
 const ARC_GEOMETRY = new THREE.RingGeometry(0.6, 2.4, 48, 1, 0, Math.PI).rotateX(-Math.PI / 2);
 const LINE_GEOMETRY = new THREE.BoxGeometry(1, 0.025, 0.025);
 const DECAL_GEOMETRY = new THREE.PlaneGeometry(2.8, 2.8);
@@ -481,12 +483,20 @@ class Sparks {
 
 // ------------------------------------------------------------ afterimages
 
+// The skinning chunks do nothing on plain meshes and pose the skinned body.
 const GHOST_VERTEX = /* glsl */ `
+  #include <common>
+  #include <skinning_pars_vertex>
   varying vec3 vNormal;
   varying vec3 vView;
   void main() {
-    vec4 mv = modelViewMatrix * vec4(position, 1.0);
-    vNormal = normalize(normalMatrix * normal);
+    #include <skinbase_vertex>
+    #include <beginnormal_vertex>
+    #include <skinnormal_vertex>
+    #include <begin_vertex>
+    #include <skinning_vertex>
+    vec4 mv = modelViewMatrix * vec4(transformed, 1.0);
+    vNormal = normalize(normalMatrix * objectNormal);
     vView = normalize(-mv.xyz);
     gl_Position = projectionMatrix * mv;
   }`;
@@ -520,7 +530,9 @@ class Afterimage implements Transient {
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
-    this.ghost = source.clone(true); // shares geometry, copies the pose
+    // Shares geometry, copies the pose. The skeleton-aware clone rebinds the skinned body
+    // to the copied bones, so the ghost keeps this pose instead of following hers.
+    this.ghost = cloneSkinned(source);
     // Effects riding on her (the blade charge) are not part of her silhouette.
     const skip: THREE.Object3D[] = [];
     this.ghost.traverse((o) => {

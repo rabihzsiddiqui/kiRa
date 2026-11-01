@@ -52,7 +52,7 @@ export const BODY: ReadonlyArray<[BoneId, V3, number]> = [
   ['chest', [0, 0.1, 0], 0.14],
   ['chest', [0, 0.2, 0], 0.12],
   ['neck', [0, 0.04, 0], 0.05],
-  ['head', [0, 0.11, 0], 0.12],
+  ['head', [0, 0.12, 0], 0.135], // the anime head: chin 2.5 cm below the joint, crown 25.5 cm above
   ['shoulderL', [-0.1, 0, 0], 0.055],
   ['shoulderR', [0.1, 0, 0], 0.055],
   ['upperArmL', [0, -0.135, 0], 0.045],
