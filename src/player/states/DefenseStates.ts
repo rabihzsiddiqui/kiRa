@@ -1,4 +1,4 @@
-import { normalize, scale, sub, type Vec2 } from '../../core/math';
+import { dot, normalize, rightOf, scale, sub, type Vec2 } from '../../core/math';
 import { Action } from '../../input/actions';
 import { AttackId } from '../../combat/moves';
 import { PlayerStateId, type Defense, type PlayerContext, type PlayerState } from '../contracts';
@@ -104,6 +104,10 @@ export class HitStunState implements PlayerState {
 /**
  * Hold Attack to charge, release to spin. Release before the charge completes
  * just lowers the sword. Block cancels the charge.
+ *
+ * Animation: the locomotion blend in charge mode (`locomotion` 3): the coiled stance,
+ * plus small steps the way she's moving (strafeX / strafeY, in her frame), so moving
+ * while charging walks instead of gliding.
  */
 export class SpinChargeState implements PlayerState {
   readonly id = PlayerStateId.SpinCharge;
@@ -117,7 +121,10 @@ export class SpinChargeState implements PlayerState {
   enter(ctx: PlayerContext): void {
     this.charge = 0;
     this.readyFired = false;
-    ctx.animator.play('spin_charge', 0.1);
+    ctx.animator.setFloat('locomotion', 3);
+    ctx.animator.setFloat('strafeX', 0);
+    ctx.animator.setFloat('strafeY', 0);
+    ctx.animator.play('locomotion', 0.12);
   }
 
   update(ctx: PlayerContext, dt: number) {
@@ -145,5 +152,8 @@ export class SpinChargeState implements PlayerState {
     const move = moveVector(ctx);
     steerFacing(ctx, move, dt);
     ctx.motor.setPlanarVelocity(scale(move, tuning.chargeMoveSpeed));
+    ctx.animator.setFloat('locomotion', 3);
+    ctx.animator.setFloat('strafeX', dot(move, rightOf(ctx.motor.facing)));
+    ctx.animator.setFloat('strafeY', dot(move, ctx.motor.facing));
   }
 }

@@ -5,7 +5,9 @@ import type { CameraBasis } from '../combat/direction';
 import { SoundFx } from '../audio/SoundFx';
 import { PostGrade } from '../feel/PostGrade';
 import { RapierCameraProbe } from '../physics/RapierCameraProbe';
-import { planarFrom3 } from '../physics/space';
+import { planarFrom3, planarTo3 } from '../physics/space';
+import { lookAllowed } from '../character/headLook';
+import { PlayerStateId } from '../player/contracts';
 import { AttackId } from '../combat/moves';
 import { ArenaView } from '../render/ArenaView';
 import { BladeCharge } from '../render/BladeCharge';
@@ -53,6 +55,9 @@ async function boot(): Promise<void> {
   const body = new URLSearchParams(location.search).get('body') === 'classic' ? 'classic' : 'mesh';
   const playerView = new PlayerView(game.animator, body);
   const dummyView = new DummyView(ARENA.dummy.position, ARENA.dummy.radius, ARENA.dummy.height);
+  /** Where she looks on the dummy: its head (DummyView puts it at 95% of the height). */
+  const DUMMY_HEAD = ARENA.dummy.height * 0.95;
+  const lookPoint = new THREE.Vector3();
   const hitboxes = new HitboxDebugView();
   hitboxes.visible = false; // V shows hit areas and hurtboxes
   arena.scene.add(playerView.root, dummyView.root, hitboxes.root);
@@ -214,6 +219,18 @@ async function boot(): Promise<void> {
 
     // Paused: effects freeze too (a true freeze frame), the camera still orbits.
     const fxDt = paused ? 0 : realDt;
+    // Her eyes on the target (or what she'd target), at its head. On her clock.
+    const look = game.targeting.lookTarget;
+    const at = look && planarTo3(look.position, look === game.dummy ? DUMMY_HEAD : 1.5);
+    const p = game.player;
+    playerView.lookAt(fxDt * game.time.playerScale, at ? lookPoint.set(at.x, at.y, at.z) : null, lookAllowed(p.state, p.attack?.attack ?? null, p.evade));
+    // Her face: a little angry near an enemy and locked on, a frown when she swings.
+    playerView.face(fxDt * game.time.playerScale, {
+      alert: game.targeting.targetNearby && !game.targeting.isLocked,
+      locked: game.targeting.isLocked,
+      attacking: p.state === PlayerStateId.Attack,
+      hurt: p.state === PlayerStateId.HitStun,
+    });
     const swing = game.player.attack?.attack;
     bladeCharge.update(fxDt, {
       charge: game.player.spinCharge,

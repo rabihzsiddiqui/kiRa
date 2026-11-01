@@ -47,6 +47,8 @@ export class GroundedState implements PlayerState {
       motor.setPlanarVelocity(scale(motor.facing, speed));
       ctx.animator.setFloat('locomotion', speed > 0 ? 1 : 0);
       ctx.animator.setFloat('speed', speed);
+      // Near an enemy she stands ready (the alert idle), like Link with a foe close by.
+      ctx.animator.setFloat('alert', targeting.targetNearby ? 1 : 0);
     }
   }
 }

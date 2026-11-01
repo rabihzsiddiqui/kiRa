@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CLIPS, LOCOMOTION, LOCOMOTION_CLIPS, locomotionWeights, type ClipDef } from '../character/clips';
+import { CLIPS, LOCOMOTION, LOCOMOTION_CLIPS, locomotionWeights, type ClipDef, type LocoKey } from '../character/clips';
 import { BONES, HIPS_HEIGHT } from '../character/rig';
 import type { Animator } from '../player/contracts';
 
@@ -8,8 +8,12 @@ export interface ClipLogEntry {
   blend: number;
 }
 
-type LocoKey = keyof typeof LOCOMOTION_CLIPS;
 const DEG = Math.PI / 180;
+/**
+ * Time constant (seconds) the clips inside the locomotion blend ease toward their weights
+ * with. Snapping made starting, stopping and turning the stick pop from pose to pose.
+ */
+const LOCO_EASE = 0.08;
 const HIPS = BONES[0];
 
 /**
@@ -40,6 +44,8 @@ export class ThreeAnimator implements Animator {
   private locoWeight = 1;
   private locoTarget = 1;
   private locoFade = 0;
+  /** The blend inside the locomotion group, easing toward locomotionWeights(). */
+  private locoMix: Record<LocoKey, number> | null = null;
   /** Player-clock time at the last two ticks, and where the mixer has been drawn up to. */
   private simPrev = 0;
   private simTime = 0;
@@ -112,8 +118,15 @@ export class ThreeAnimator implements Animator {
       speed: this.getFloat('speed'),
       strafeX: this.getFloat('strafeX'),
       strafeY: this.getFloat('strafeY'),
+      alert: this.getFloat('alert'),
     });
-    for (const k of Object.keys(this.loco) as LocoKey[]) this.loco[k].setEffectiveWeight(this.locoWeight * weights[k]);
+    // While the group is faded out there's nothing to ease from: take the new mix as is.
+    const k = !this.locoMix || this.locoWeight === 0 ? 1 : 1 - Math.exp(-dt / LOCO_EASE);
+    const mix = (this.locoMix ??= { ...weights });
+    for (const key of Object.keys(this.loco) as LocoKey[]) {
+      mix[key] += (weights[key] - mix[key]) * k;
+      this.loco[key].setEffectiveWeight(this.locoWeight * mix[key]);
+    }
     this.loco.run.setEffectiveTimeScale(runRate);
 
     if (!this.deferred) {

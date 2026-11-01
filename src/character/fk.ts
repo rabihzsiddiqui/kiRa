@@ -5,9 +5,10 @@ import { BONES, HIPS_HEIGHT, type BoneId } from './rig';
  * Tiny forward kinematics for clip authoring, engine-free. Same conventions as the
  * render layer: bone-local Euler YXZ in degrees, three.js axes (forward is -Z).
  *
- * Its one job: find the lowest point of a posed body, so poses that touch the floor
- * with something other than the feet (a roll, a kneel, a deep lunge) can be placed on
- * the ground exactly instead of by guessing hipsY.
+ * Two jobs: find the lowest point of a posed body, so poses that touch the floor with
+ * something other than the feet (a roll, a kneel, a deep lunge) can be placed on the
+ * ground exactly instead of by guessing hipsY; and leg IK (legIK), so stepping clips can
+ * put each foot exactly where it should be on the floor.
  */
 
 type V3 = [number, number, number];
@@ -107,4 +108,58 @@ export function lowestPoint(pose: Pose): number {
  */
 export function onGround(pose: Pose, clearance = 0): Pose {
   return { ...pose, hipsY: (pose.hipsY ?? 0) - lowestPoint(pose) + clearance };
+}
+
+const THIGH = 0.44;
+const SHIN = 0.43;
+const UPPER_ARM = 0.27;
+const FOREARM = 0.235;
+/** Ankle to sole (meters): an ankle this high has the foot flat on the floor. */
+export const ANKLE = 0.07;
+
+/**
+ * Two-bone IK for a limb hanging down at rest (-Y): pitch (X) after roll (Z) at the root,
+ * and the middle joint bending about the root's X, backward (a knee). In the root's frame
+ * the end is at (0, -h, v), h = upper + lower cos(bend), v = -lower sin(bend); the roll
+ * swings that out to the side and the pitch turns it forward. Radians. A target out of
+ * reach gets the limb pointed at it as far as it goes.
+ */
+function twoBone(to: readonly [number, number, number], upper: number, lower: number): { pitch: number; roll: number; bend: number } {
+  const [x, y, z] = to;
+  const d = Math.min(upper + lower - 1e-4, Math.max(Math.abs(upper - lower) + 0.05, Math.hypot(x, y, z)));
+  const bend = -Math.acos(Math.max(-1, Math.min(1, (d * d - upper * upper - lower * lower) / (2 * upper * lower))));
+  const h = upper + lower * Math.cos(bend);
+  const v = -lower * Math.sin(bend);
+  const roll = Math.asin(Math.max(-1, Math.min(1, x / h)));
+  const c = h * Math.cos(roll);
+  const pitch = Math.atan2(z, y) - Math.atan2(v, -c);
+  // atan2 differences can wrap: keep the pitch in -180..180.
+  return { pitch: Math.atan2(Math.sin(pitch), Math.cos(pitch)), roll, bend };
+}
+
+/**
+ * Leg IK: thigh, shin and foot angles (degrees, clip conventions) that put the ankle at
+ * `to`, given relative to the hip joint in the hips' frame (x her right, y up, -z her
+ * forward). The knee bends the natural way and the foot is kept flat.
+ */
+export function legIK(to: readonly [number, number, number]): { thigh: [number, number, number]; shin: [number, number, number]; foot: [number, number, number] } {
+  const { pitch, roll, bend } = twoBone(to, THIGH, SHIN);
+  const deg = (r: number) => r / DEG;
+  return {
+    thigh: [deg(pitch), 0, deg(roll)],
+    shin: [deg(bend), 0, 0],
+    foot: [-deg(pitch + bend), 0, -deg(roll)],
+  };
+}
+
+/**
+ * Arm IK: upper arm and forearm angles that put the wrist at `to`, relative to the shoulder
+ * joint in the shoulder bone's frame. An elbow bends forward, a knee back: so it's the leg
+ * solution for the target mirrored front to back, mirrored back (pitch and bend flip sign,
+ * the roll is unchanged by that mirror).
+ */
+export function armIK(to: readonly [number, number, number]): { upperArm: [number, number, number]; forearm: [number, number, number] } {
+  const { pitch, roll, bend } = twoBone([to[0], to[1], -to[2]], UPPER_ARM, FOREARM);
+  const deg = (r: number) => r / DEG;
+  return { upperArm: [-deg(pitch), 0, deg(roll)], forearm: [-deg(bend), 0, 0] };
 }

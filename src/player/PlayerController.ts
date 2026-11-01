@@ -1,5 +1,5 @@
 import { dot, normalize, sub } from '../core/math';
-import type { AttackId } from '../combat/moves';
+import type { AttackId, EvadeId } from '../combat/moves';
 import { StateMachine } from '../fsm/StateMachine';
 import { Action } from '../input/actions';
 import {
@@ -87,6 +87,11 @@ export class PlayerController {
   }
 
   // ------------------------------------------------------------ debug readouts
+
+  /** The evade in progress, or null. */
+  get evade(): EvadeId | null {
+    return this.state === PlayerStateId.Evade ? this.evadeState.evade : null;
+  }
 
   get attack(): AttackReadout | null {
     if (this.state !== PlayerStateId.Attack) return null;

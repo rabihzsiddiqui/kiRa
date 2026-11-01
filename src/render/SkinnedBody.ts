@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { fitArmor } from '../character/armorFit';
+import { fitFace, type FaceFit } from '../character/faceFit';
 import { fitHair } from '../character/hairFit';
 import { shellColumns, type Shell } from '../character/shell';
 import { fitBody, restJoints } from '../character/bodyFit';
@@ -24,6 +25,7 @@ interface BodyAsset {
   plates: THREE.BufferGeometry;
   straps: THREE.BufferGeometry;
   hair: THREE.BufferGeometry;
+  face: THREE.BufferGeometry;
 }
 
 /** Fitted once per page, shared by every figure. */
@@ -56,6 +58,7 @@ function loadAsset(): Promise<BodyAsset> {
       plates: shellsGeometry(armor.plates.map((p) => p.shell)),
       straps: shellsGeometry(armor.straps.map((p) => p.shell)),
       hair: shellGeometry(fitHair(fit, restJoints().head[1])),
+      face: faceGeometry(fitFace(fit, restJoints().head[1])),
     };
   });
   return asset;
@@ -164,14 +167,29 @@ function shellsGeometry(shells: Shell[]): THREE.BufferGeometry {
   return merged;
 }
 
+/** The face patch (character/faceFit.ts): `aFace` carries the face coordinates the eyes are painted in. */
+function faceGeometry(f: FaceFit): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(f.positions, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(f.normals, 3));
+  g.setAttribute('aFace', new THREE.BufferAttribute(f.face, 2));
+  g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(f.skinIndex, 4));
+  g.setAttribute('skinWeight', new THREE.BufferAttribute(f.skinWeight, 4));
+  g.setIndex(new THREE.BufferAttribute(f.indices, 1));
+  return g;
+}
+
 /** Empty, but with the attributes a skinned mesh expects (see skinnedBody). */
-function emptySkinned(extra: string[] = []): THREE.BufferGeometry {
+function emptySkinned(extra: Array<string | [string, number]> = []): THREE.BufferGeometry {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute([], 3));
   g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute([], 4));
   g.setAttribute('skinWeight', new THREE.Float32BufferAttribute([], 4));
-  for (const name of extra) g.setAttribute(name, new THREE.Float32BufferAttribute([], 1));
+  for (const e of extra) {
+    const [name, size] = typeof e === 'string' ? [e, 1] : e;
+    g.setAttribute(name, new THREE.Float32BufferAttribute([], size));
+  }
   return g;
 }
 
@@ -181,6 +199,8 @@ export interface BodyMaterials {
   plates: [steel: THREE.Material, gold: THREE.Material];
   straps: [leather: THREE.Material, gold: THREE.Material];
   hair: THREE.Material;
+  /** Eyes and brows (FaceView.ts). */
+  face: THREE.Material;
 }
 
 /**
@@ -214,6 +234,9 @@ export function skinnedBody(
   const plates = make(emptySkinned(), materials.plates);
   const straps = make(emptySkinned(), materials.straps);
   const hair = make(emptySkinned(), materials.hair);
+  const face = make(emptySkinned([['aFace', 2]]), materials.face);
+  face.castShadow = false;
+  face.renderOrder = 1; // after the hair, which it's drawn over
 
   if (typeof document === 'undefined') return;
   loadAsset().then(
@@ -222,7 +245,8 @@ export function skinnedBody(
       plates.geometry = a.plates;
       straps.geometry = a.straps;
       hair.geometry = a.hair;
-      for (const m of [materials.body, ...materials.plates, ...materials.straps, materials.hair]) m.needsUpdate = true;
+      face.geometry = a.face;
+      for (const m of [materials.body, ...materials.plates, ...materials.straps, materials.hair, materials.face]) m.needsUpdate = true;
     },
     (e: unknown) => console.error('base body failed to load', e),
   );

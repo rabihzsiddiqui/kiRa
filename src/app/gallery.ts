@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CLIPS, LOCOMOTION } from '../character/clips';
+import { NEUTRAL, type Expression } from '../character/face';
 import { ATTACKS, type AttackDef } from '../combat/moves';
 import { COLORS } from '../render/ArenaView';
 import { PlayerView } from '../render/PlayerView';
@@ -14,6 +15,7 @@ import { ThreeAnimator } from '../render/ThreeAnimator';
  *   ?yaw=180  turn every figure, in degrees (180 = her back to the camera)
  *   ?y=1.6    height the camera looks at (1.6 = her face)
  *   ?body=classic  the original shape-built body instead of the skinned base mesh
+ *   ?face=angry    an expression on every figure: angry, frown, pain, blink (or several: angry,frown)
  * Not part of the production build (Vite builds index.html only).
  */
 
@@ -22,6 +24,14 @@ const at = params.has('at') ? Number(params.get('at')) : null;
 const only = params.get('only');
 const zoom = Math.max(0.2, Number(params.get('zoom') ?? 1));
 const body = params.get('body') === 'classic' ? 'classic' : 'mesh';
+const faceParts = new Set((params.get('face') ?? '').split(','));
+const expression: Expression = {
+  ...NEUTRAL,
+  angry: faceParts.has('angry') ? 1 : 0,
+  frown: faceParts.has('frown') ? 1 : 0,
+  pain: faceParts.has('pain') ? 1 : 0,
+  blink: faceParts.has('blink') ? 1 : 0,
+};
 
 interface Entry {
   name: string;
@@ -46,11 +56,16 @@ const trailAt = (e: Entry, age: number) => {
 
 const LOCO_VARIANTS: Array<[string, Record<string, number>]> = [
   ['loco idle', { locomotion: 0 }],
+  ['loco alert', { locomotion: 0, alert: 1 }],
+  ['loco stance', { locomotion: 2 }],
   ['loco run', { locomotion: 1, speed: 6 }],
   ['loco strafe f', { locomotion: 2, strafeY: 1 }],
   ['loco strafe b', { locomotion: 2, strafeY: -1 }],
   ['loco strafe l', { locomotion: 2, strafeX: -1 }],
   ['loco strafe r', { locomotion: 2, strafeX: 1 }],
+  ['charge idle', { locomotion: 3 }],
+  ['charge step f', { locomotion: 3, strafeY: 1 }],
+  ['charge step r', { locomotion: 3, strafeX: 1 }],
 ];
 
 const canvas = document.getElementById('view') as HTMLCanvasElement;
@@ -80,6 +95,7 @@ const entries: Entry[] = names.map((name, i) => {
   const z = -row * SPACING * 1.4;
   // Facing the camera (+Z), turned three quarters so slashes and flips read.
   view.sync(x, 0, z, YAW);
+  view.showFace(expression);
   scene.add(view.root);
 
   const label = document.createElement('div');

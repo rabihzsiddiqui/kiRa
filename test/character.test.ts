@@ -60,7 +60,11 @@ test('locomotion blend weights sum to 1 and follow the params', () => {
   assert.ok(Math.abs(half.weights.run - 0.5) < 1e-9 && half.runRate === 0.5);
   const diag = locomotionWeights({ locomotion: 2, speed: 0, strafeX: 0.6, strafeY: -0.6 });
   assert.ok(diag.weights.strafeR > 0 && diag.weights.strafeB > 0 && diag.weights.strafeL === 0);
-  for (const w of [idle, run, half, diag]) assert.ok(Math.abs(sum(w.weights) - 1) < 1e-9);
+  const charging = locomotionWeights({ locomotion: 3, speed: 0, strafeX: 0, strafeY: 0 });
+  assert.equal(charging.weights.charge, 1, 'charging in place: the coiled stance');
+  const chargeWalk = locomotionWeights({ locomotion: 3, speed: 0, strafeX: 0, strafeY: 1 });
+  assert.equal(chargeWalk.weights.chargeF, 1, 'charging on the move: steps');
+  for (const w of [idle, run, half, diag, charging, chargeWalk]) assert.ok(Math.abs(sum(w.weights) - 1) < 1e-9);
 });
 
 // ------------------------------------------------------------------- roll

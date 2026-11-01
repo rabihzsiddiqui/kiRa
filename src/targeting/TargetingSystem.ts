@@ -60,6 +60,18 @@ export class TargetingSystem implements TargetingQuery {
     return this.target;
   }
 
+  /**
+   * What she looks at: the locked target, or else whatever a lock would pick right now
+   * (something targetable in range and in view), so her eyes find it before she locks.
+   */
+  get lookTarget(): Targetable | null {
+    return this.target ?? this.pick();
+  }
+
+  get targetNearby(): boolean {
+    return this.lookTarget !== null;
+  }
+
   /** True when the button is held but nothing is in range (camera recenters behind her). */
   get wantsRecenter(): boolean {
     return this.input.isHeld(Action.Target) && !this.target;

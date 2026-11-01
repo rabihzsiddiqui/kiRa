@@ -64,6 +64,8 @@ export class HeadlessSandbox {
   readonly trace: string[] = [];
   readonly attacks: AttackId[] = [];
   readonly cues: FxCue[] = [];
+  /** What the states asked the animator for: the last clip and the latest params. */
+  readonly anim = { clip: '', params: new Map<string, number>() };
   readonly hitboxLog: Array<{ frame: number; attack: AttackId; active: boolean }> = [];
   /** Everything CombatWorld reported, in order. */
   readonly combatLog: Array<{ frame: number } & (
@@ -95,7 +97,14 @@ export class HeadlessSandbox {
       motor: this.motor,
       targeting: this.targeting,
       camera: this.camera,
-      animator: { play: () => {}, setFloat: () => {} },
+      animator: {
+        play: (clip) => {
+          this.anim.clip = clip;
+        },
+        setFloat: (param, value) => {
+          this.anim.params.set(param, value);
+        },
+      },
       combat: {
         setHitboxActive: (def: AttackDef, active: boolean) => {
           this.hitboxLog.push({ frame: this.frame, attack: def.id, active });

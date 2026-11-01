@@ -26,6 +26,7 @@ before(async () => {
 class FakeTargeting implements CameraTargeting {
   locked = false;
   wantsRecenter = false;
+  targetNearby = false;
   constructor(
     readonly player: { position: Vec2 },
     readonly target: Vec2,

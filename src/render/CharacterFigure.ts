@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { faceMaterial, type FaceLook } from './FaceView';
 import { BONES, type BoneId } from '../character/rig';
 import type { SwordLayout } from './BladeCharge';
 import { fillAnimeHead } from './AnimeHead';
@@ -33,6 +34,8 @@ export interface Figure {
   materials: THREE.MeshStandardMaterial[];
   /** Swings the skirt panels out of the way of her thighs, and settles the pauldrons. Call after posing. */
   updateCloth(): void;
+  /** Her eyes and brows (the skinned body only; the classic body's head model has its own face). */
+  face: FaceLook | null;
 }
 
 const PALETTE = {
@@ -365,6 +368,7 @@ export function buildFigure(body: BodyKind = 'mesh'): Figure {
 
   // ------------------------------------------------------------------ body
   const pauldrons: Array<{ group: THREE.Group; arm: THREE.Bone }> = [];
+  const face = classic ? null : faceMaterial();
   // The base mesh, skinned to the bones (see SkinnedBody.ts and character/bodyFit.ts).
   // Armor over the tunic: front and back plates ending under the bust, open at the sides
   // and joined by leather straps (see armorFit.ts), and a pauldron on each shoulder.
@@ -375,7 +379,7 @@ export function buildFigure(body: BodyKind = 'mesh'): Figure {
     const steel = mat(PALETTE.steel, { metalness: 0.55, roughness: 0.32 });
     const steelInside = mat(PALETTE.steel, { metalness: 0.55, roughness: 0.5, side: THREE.BackSide });
     const hairMat = mat(PALETTE.hair, { roughness: 0.72 }); // matte: a shiny shell reads as a helmet
-    skinnedBody(root, bones, { body: outfit, plates: [steel, gold], straps: [leather, gold], hair: hairMat });
+    skinnedBody(root, bones, { body: outfit, plates: [steel, gold], straps: [leather, gold], hair: hairMat, face: face!.material });
     for (const side of ['L', 'R'] as const) pauldrons.push({ group: pauldron(side, steel, steelInside), arm: bones[`upperArm${side}`] });
   }
 
@@ -504,5 +508,5 @@ export function buildFigure(body: BodyKind = 'mesh'): Figure {
     skirt.left.rotation.z = clamp(Math.min(0, l.side) - 0.25 * Math.abs(l.forward));
   };
 
-  return { root, bones, blade, sword: { group: sword, hiltZ: HILT_Z, tipZ: HILT_Z - BLADE_LENGTH }, materials, updateCloth };
+  return { root, bones, blade, sword: { group: sword, hiltZ: HILT_Z, tipZ: HILT_Z - BLADE_LENGTH }, materials, updateCloth, face };
 }
