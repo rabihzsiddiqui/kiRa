@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { AttackId, ATTACKS } from '../src/combat/moves';
-import { spinWave, trailStyle } from '../src/feel/swingTrail';
-import { SwordTrail, waveSource } from '../src/render/SwordTrail';
+import { spinWave, trailStyle, waveWall, wavePoints } from '../src/feel/swingTrail';
+import { spinWaveTrails, SwordTrail, waveSource } from '../src/render/SwordTrail';
 
 /*
  * The spin's wave is drawn as its own thing: energy in the charge's colors, not a copy of
@@ -58,4 +58,37 @@ test('a fast spin draws a smooth, whole circle at the edge of the reach', () => 
     prev = a;
   }
   assert.ok(turned > Math.PI * 2, `the whole turn is drawn (${turned.toFixed(2)} rad)`);
+});
+
+test('the wave has real thickness: an upright band crosses the flat one along its hot line', () => {
+  const wave = spinWave(AttackId.Spin)!;
+  assert.ok(wave.thickness >= 0.3, `${wave.thickness} m tall`);
+  const center = { x: 0, y: 0, z: 0 };
+  const tip = { x: 1, y: 1.3, z: 1 };
+  const band = wavePoints(center, tip, wave)!;
+  const wall = waveWall(center, tip, wave)!;
+  const r = (q: { x: number; z: number }) => Math.hypot(q.x, q.z);
+  const hot = r(band.inner) + (r(band.outer) - r(band.inner)) * wave.rim;
+  assert.ok(Math.abs(r(wall.low) - hot) < 1e-9 && Math.abs(r(wall.high) - hot) < 1e-9, 'on the hot line');
+  assert.ok(Math.abs(wall.high.y - wall.low.y - wave.thickness) < 1e-9);
+  assert.ok(Math.abs((wall.high.y + wall.low.y) / 2 - tip.y) < 1e-9, 'centered on the blade height');
+
+  // Both parts draw during a spin, with the hot line where each expects it.
+  const group = new THREE.Group();
+  const sword = { group, hiltZ: -0.11, tipZ: -1.06 };
+  const parts = spinWaveTrails(sword, () => new THREE.Vector3());
+  for (let f = 0; f < 4; f++) {
+    group.rotation.y = -(f * Math.PI) / 6;
+    group.position.y = 1.2;
+    group.updateMatrixWorld(true);
+    for (const p of parts) p.update(1 / 60, { attack: AttackId.Spin, emitting: true });
+  }
+  for (const p of parts) assert.ok(p.mesh.visible && p.mesh.geometry.drawRange.count > 0);
+  const [flat, upright] = parts.map((p) => p.mesh.geometry.getAttribute('position'));
+  assert.ok(Math.abs(flat.getY(0) - flat.getY(1)) < 1e-6, 'the band lies flat');
+  assert.ok(Math.abs(upright.getY(1) - upright.getY(0) - wave.thickness) < 1e-6, 'the wall stands up');
+  assert.deepEqual(
+    parts.map((p) => p.mesh.material.uniforms.uRim.value),
+    [wave.rim, 0.5],
+  );
 });

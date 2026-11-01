@@ -22,7 +22,14 @@ test('basic swings share the standard trail; specials and counters look differen
     assert.ok(s.life > standard.life && s.reach > standard.reach && s.shimmer > 0, `${id}: bigger and longer, with shimmer`);
   }
   assert.equal(trailStyle(AttackId.FinisherCleave).tier, 'special');
-  assert.equal(trailStyle(AttackId.Spin).tier, 'special');
+  assert.equal(trailStyle(AttackId.FinisherSpin).tier, 'special');
+  // The spin attack's blade trail is the same gold but faint: its wave is the show.
+  for (const id of [AttackId.Spin, AttackId.SpinClockwise]) {
+    const s = trailStyle(id);
+    assert.equal(s.tier, 'spin');
+    assert.equal(s.edge, TRAIL_STYLES.special.edge);
+    assert.ok(s.intensity < TRAIL_STYLES.special.intensity * 0.4, 'much fainter than a special');
+  }
   assert.equal(trailStyle(AttackId.PhantomDash).tier, 'counter');
   assert.notEqual(TRAIL_STYLES.special.edge, TRAIL_STYLES.counter.edge);
 });

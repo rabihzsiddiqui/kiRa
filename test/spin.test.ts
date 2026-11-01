@@ -57,7 +57,7 @@ test('the spin throws a circle of energy at the edge of its reach, following the
     const wave = spinWave(id);
     assert.ok(wave, `${id} has a wave`);
     assert.equal(wave.radius, ATTACKS[id].hit.range, 'its outer edge is the hit range');
-    assert.equal(trailStyle(id).tier, 'special', 'and the blade keeps its usual trail');
+    assert.equal(trailStyle(id).tier, 'spin', 'and the blade keeps a (faint) trail');
   }
   for (const id of Object.values(AttackId)) {
     if (id !== AttackId.Spin && id !== AttackId.SpinClockwise) assert.equal(spinWave(id), null, `${id}: no wave`);

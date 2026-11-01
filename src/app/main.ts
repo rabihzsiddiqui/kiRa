@@ -9,7 +9,7 @@ import { planarFrom3 } from '../physics/space';
 import { AttackId } from '../combat/moves';
 import { ArenaView } from '../render/ArenaView';
 import { BladeCharge } from '../render/BladeCharge';
-import { SwordTrail, waveSource } from '../render/SwordTrail';
+import { spinWaveTrails, SwordTrail } from '../render/SwordTrail';
 import { trailEmitting } from '../feel/swingTrail';
 import { CameraView } from '../render/CameraView';
 import { DummyView } from '../render/DummyView';
@@ -67,8 +67,8 @@ async function boot(): Promise<void> {
   const bladeCharge = new BladeCharge(playerView.sword, reducedMotion);
   const swordTrail = new SwordTrail(playerView.sword);
   // The spin's circle of energy, out at the edge of its reach, swept round with the blade.
-  const spinWave = new SwordTrail(playerView.sword, waveSource(playerView.sword, () => playerView.root.position));
-  arena.scene.add(swordTrail.mesh, spinWave.mesh);
+  const spinWave = spinWaveTrails(playerView.sword, () => playerView.root.position);
+  arena.scene.add(swordTrail.mesh, ...spinWave.map((t) => t.mesh));
   const post = new PostFx(arena.renderer, arena.scene, cameraView.camera, reducedMotion);
   const glyph = new CounterGlyph(document.body, game, devices);
   const chest = new THREE.Vector3();
@@ -220,7 +220,7 @@ async function boot(): Promise<void> {
     // On her clock, so trails linger with her in slow-mo.
     const trailInput = { attack: swing ?? null, emitting: trailEmitting(game.player.attack) };
     swordTrail.update(fxDt * game.time.playerScale, trailInput);
-    spinWave.update(fxDt * game.time.playerScale, trailInput);
+    for (const t of spinWave) t.update(fxDt * game.time.playerScale, trailInput);
     fx.update(fxDt, worldDt);
     const g = grade.update(fxDt, game.time.worldScale, game.targeting.isLocked);
     sound.setWorldLowpass(g.lowpassHz);

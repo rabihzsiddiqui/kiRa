@@ -3,7 +3,7 @@ import { CLIPS, LOCOMOTION } from '../character/clips';
 import { ATTACKS, type AttackDef } from '../combat/moves';
 import { COLORS } from '../render/ArenaView';
 import { PlayerView } from '../render/PlayerView';
-import { SwordTrail, waveSource } from '../render/SwordTrail';
+import { spinWaveTrails, SwordTrail } from '../render/SwordTrail';
 import { ThreeAnimator } from '../render/ThreeAnimator';
 
 /*
@@ -35,7 +35,7 @@ interface Entry {
   attack?: AttackDef;
   trail: SwordTrail;
   /** The spin's circle of energy (only spins draw one). */
-  wave: SwordTrail;
+  wave: SwordTrail[];
 }
 
 /** Trail input for an attack clip `age` seconds in. */
@@ -98,8 +98,8 @@ const entries: Entry[] = names.map((name, i) => {
   const duration = loco ? 1 : CLIPS.get(name)!.duration;
   const attack = Object.values(ATTACKS).find((a) => a.anim === name);
   const trail = new SwordTrail(view.sword);
-  const wave = new SwordTrail(view.sword, waveSource(view.sword, () => view.root.position));
-  scene.add(trail.mesh, wave.mesh);
+  const wave = spinWaveTrails(view.sword, () => view.root.position);
+  scene.add(trail.mesh, ...wave.map((w) => w.mesh));
   const entry: Entry = { name, animator, view, duration, label, loco, attack, trail, wave };
   if (at !== null) {
     // Step up to the frozen moment so the trail behind the blade is there too.
@@ -108,7 +108,7 @@ const entries: Entry[] = names.map((name, i) => {
       animator.tick(Math.min(step, duration * at - t));
       view.sync(x, 0, z, YAW);
       trail.update(step, trailAt(entry, t));
-      wave.update(step, trailAt(entry, t));
+      for (const w of wave) w.update(step, trailAt(entry, t));
     }
   }
   return entry;
@@ -148,7 +148,7 @@ const frame = (now: number) => {
     e.view.sync(e.view.root.position.x, 0, e.view.root.position.z, YAW);
     if (at === null) {
       e.trail.update(dt, trailAt(e, ages.get(e) ?? 0));
-      e.wave.update(dt, trailAt(e, ages.get(e) ?? 0));
+      for (const w of e.wave) w.update(dt, trailAt(e, ages.get(e) ?? 0));
     }
     const p = e.view.root.position.clone().setY(-0.15).project(camera);
     e.label.style.transform = `translate(${((p.x + 1) / 2) * window.innerWidth - 30}px, ${((1 - p.y) / 2) * window.innerHeight}px)`;

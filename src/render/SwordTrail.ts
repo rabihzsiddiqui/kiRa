@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { AttackId } from '../combat/moves';
-import { spinWave, trailStyle, wavePoints, type SpinWave, type TrailStyle } from '../feel/swingTrail';
+import { spinWave, trailStyle, WAVE_RIM, wavePoints, waveWall, type SpinWave, type TrailStyle } from '../feel/swingTrail';
 import type { SwordLayout } from './BladeCharge';
 
 /** What the trail needs each frame. Read from the player, never written back. */
@@ -31,6 +31,8 @@ export interface TrailSource {
   subdivide: number;
   /** How it's shaded: a blade trail, or a band of energy (the spin's wave). */
   look: 'blade' | 'energy';
+  /** Energy look: where its hot line runs across the ribbon (0 = base, 1 = tip edge), and how wide. */
+  rim?: { at: number; width: number };
   /**
    * Optional: lays the in-between points from the last frame's edges to this frame's
    * itself, instead of the default curve fit.
@@ -62,13 +64,14 @@ const WAVE_STEP = 0.035;
 /**
  * The spin's wave (see spinWave in feel/swingTrail.ts): a band out at the edge of the
  * spin's hit range, pointing where the blade points, so it sweeps a circle round her.
- * `center` is her position (feet), world space.
+ * `center` is her position (feet), world space. `part` is the flat band, or the upright
+ * one crossing it along its hot line that gives it thickness (waveWall).
  *
  * Between frames it steps around her by angle at a fixed radius, so the band is a true
  * arc however far the blade turned that frame (a curve fit through 3 m wide steps cuts
  * corners and looks choppy).
  */
-export function waveSource(sword: SwordLayout, center: () => THREE.Vector3): TrailSource {
+export function waveSource(sword: SwordLayout, center: () => THREE.Vector3, part: 'band' | 'wall' = 'band'): TrailSource {
   const tipWorld = new THREE.Vector3();
   let wave: SpinWave | null = null;
   return {
@@ -78,6 +81,8 @@ export function waveSource(sword: SwordLayout, center: () => THREE.Vector3): Tra
     },
     subdivide: 1,
     look: 'energy',
+    // Band: the hot line near its outer edge. Wall: through its middle, at the same place.
+    rim: part === 'band' ? { at: WAVE_RIM, width: 0.07 } : { at: 0.5, width: 0.1 },
     between: (from, to, push) => {
       const c = center();
       const angle = (v: THREE.Vector3) => Math.atan2(v.z - c.z, v.x - c.x);
@@ -101,6 +106,13 @@ export function waveSource(sword: SwordLayout, center: () => THREE.Vector3): Tra
     edges: (_style, base, tip) => {
       if (!wave) return false;
       sword.group.localToWorld(tipWorld.set(0, 0, sword.tipZ));
+      if (part === 'wall') {
+        const w = waveWall(center(), tipWorld, wave);
+        if (!w) return false;
+        base.set(w.low.x, w.low.y, w.low.z);
+        tip.set(w.high.x, w.high.y, w.high.z);
+        return true;
+      }
       const p = wavePoints(center(), tipWorld, wave);
       if (!p) return false;
       base.set(p.inner.x, p.inner.y, p.inner.z);
@@ -108,6 +120,11 @@ export function waveSource(sword: SwordLayout, center: () => THREE.Vector3): Tra
       return true;
     },
   };
+}
+
+/** The whole spin wave: the flat band and the upright one, crossed (a + in section). */
+export function spinWaveTrails(sword: SwordLayout, center: () => THREE.Vector3): SwordTrail[] {
+  return [new SwordTrail(sword, waveSource(sword, center, 'band')), new SwordTrail(sword, waveSource(sword, center, 'wall'))];
 }
 
 interface TrailPoint {
@@ -163,7 +180,7 @@ export class SwordTrail {
     g.setDrawRange(0, 0);
 
     const material = new THREE.ShaderMaterial({
-      uniforms: { uTime: { value: 0 } },
+      uniforms: { uTime: { value: 0 }, uRim: { value: this.source.rim?.at ?? 0.8 }, uRimWidth: { value: this.source.rim?.width ?? 0.07 } },
       vertexShader: VERT,
       fragmentShader: this.source.look === 'energy' ? ENERGY_FRAG : FRAG,
       transparent: true,
@@ -331,13 +348,15 @@ const FRAG = /* glsl */ `
 
 /**
  * The spin's wave: a band of energy, not a blade trail. Across the band (0 inner, 1 outer)
- * there's a soft glow that fades out on both sides and a hot rim near the outer edge (the
- * edge of the hit range). Noise flows along the ring (vAlong, meters) and churns over
+ * there's a hot line (uRim: near the outer edge on the flat band, the middle on the
+ * upright one) with a soft glow fading out from it to both edges. Noise flows along the ring (vAlong, meters) and churns over
  * time, with thin bright filaments in it. The newest part flares white; as it ages it
  * breaks up into the noise and burns out, rather than fading evenly like steel's trail.
  */
 const ENERGY_FRAG = /* glsl */ `
   uniform float uTime;
+  uniform float uRim;
+  uniform float uRimWidth;
   varying vec4 vParams;
   varying vec3 vCore;
   varying vec3 vEdge;
@@ -369,17 +388,20 @@ const ENERGY_FRAG = /* glsl */ `
     float wisp = fbm(vec2(along * 0.9 + uTime * 4.0, across * 10.0 - uTime * 1.5));
     float filament = pow(clamp(1.0 - abs(wisp - 0.5) * 5.0, 0.0, 1.0), 2.0);
 
-    // The rim wavers with the flow; the glow fades out toward both sides of the band.
-    float rimAt = 0.8 + (flow - 0.5) * 0.1;
-    float rim = exp(-pow((across - rimAt) / 0.07, 2.0));
-    float glow = smoothstep(0.0, 0.6, across) * (1.0 - smoothstep(0.86, 1.0, across));
+    // The rim wavers with the flow; the glow fades out from it toward both edges.
+    float rimAt = uRim + (flow - 0.5) * 0.1;
+    float rim = exp(-pow((across - rimAt) / uRimWidth, 2.0));
+    float d = across - uRim;
+    float glow = d < 0.0 ? 1.0 - smoothstep(0.25 * uRim, uRim, -d) : 1.0 - smoothstep(0.3 * (1.0 - uRim), 1.0 - uRim, d);
 
-    // Newest energy flares; older energy breaks up and burns out.
-    float head = exp(-age * 20.0);
+    // Newest energy flares; older energy breaks up and burns out. The very front fades in,
+    // so the leading end tapers instead of stopping in a flat cut.
+    float lead = smoothstep(0.0, 0.05, age);
+    float head = exp(-age * 20.0) * lead;
     float burn = smoothstep(age - 0.25, age + 0.05, flow);
     float fade = pow(1.0 - age, 1.2);
 
-    float alpha = (glow * (0.18 + 0.4 * flow) + rim * (0.55 + 0.45 * flow) + filament * glow * 0.6) * burn * fade;
+    float alpha = (glow * (0.18 + 0.4 * flow) + rim * (0.55 + 0.45 * flow) + filament * glow * 0.6) * burn * fade * lead;
     alpha += head * (glow * 0.25 + rim * 0.5);
     vec3 color = mix(vEdge, vCore, clamp(rim * 0.7 + filament * 0.5 + head * 0.6, 0.0, 1.0));
     gl_FragColor = vec4(clamp(color * intensity, 0.0, 8.0), clamp(alpha, 0.0, 1.0));
