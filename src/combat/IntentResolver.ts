@@ -38,6 +38,8 @@ export interface ResolveOptions {
    * from where it leaves the blade), `step` the 0-based index of the swing being picked.
    */
   combo?: { from: AttackId; step: number };
+  /** Set while an evade is in progress: some evades turn Attack into their own follow-up. */
+  evading?: EvadeId;
 }
 
 const NONE: Intent = { kind: 'none' };
@@ -45,7 +47,8 @@ const NONE: Intent = { kind: 'none' };
 /**
  * The whole button-to-move table lives here, in one readable function.
  * Oldest press wins (Attack or Evade):
- *   Attack: 360 gesture -> Spin, else directional table -> swing family, then COMBO
+ *   Attack: during a roll -> Roll thrust (out of the roll)
+ *           360 gesture -> Spin, else directional table -> swing family, then COMBO
  *           picks the swing: opener, the variant that flows from the last swing, or
  *           (on the last hit of a full combo) that family's ender
  *   Evade:  untargeted -> Roll
@@ -67,6 +70,9 @@ export function resolveIntent(ctx: ResolveContext, opts: ResolveOptions): Intent
 }
 
 function attackIntent(ctx: ResolveContext, press: BufferedPress, opts: ResolveOptions): Intent {
+  if (opts.evading === EvadeId.Roll) {
+    return { kind: 'attack', attack: AttackId.RollThrust, presses: [press], usedSpinGesture: false };
+  }
   if (ctx.input.hasSpinGesture()) {
     // The spin turns the way the stick went round.
     const attack = ctx.input.spinGestureDirection === 'clockwise' ? AttackId.SpinClockwise : AttackId.Spin;

@@ -17,10 +17,11 @@ import { AttackPhase } from '../src/player/states/AttackState';
 test('pending presses: a press made mid-roll waits in the buffer, then ages out', () => {
   const sb = new HeadlessSandbox();
   sb.step({ evade: true });
-  sb.step({ attack: true }); // the roll can't cancel yet
+  sb.step();
+  sb.step({ evade: true }); // a second roll: the first can't cancel yet
   const pending = sb.input.pending;
   assert.equal(pending.length, 1);
-  assert.equal(pending[0].action, Action.Attack);
+  assert.equal(pending[0].action, Action.Evade);
   assert.equal(sb.input.now - pending[0].time, 0, 'fresh press, age 0');
 
   sb.run(13); // 0.22 s, past the 0.2 s buffer window

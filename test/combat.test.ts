@@ -87,19 +87,28 @@ test('hitbox is only live during the active phase', () => {
 });
 
 test('a press too early in the move is dropped; one inside the buffer window fires', () => {
+  // Chaining rolls: the second Evade waits for the first roll's cancel window.
+  // (Attack during a roll is different: the roll keeps it for the roll thrust.)
+  const rolls = (sb: HeadlessSandbox) => {
+    let n = 0;
+    sb.events.on('evadeStarted', () => n++);
+    return () => n;
+  };
   const early = new HeadlessSandbox();
+  const earlyRolls = rolls(early);
   early.step({ evade: true });
   early.run(3);
-  early.step({ attack: true }); // ~0.5 s before the roll can cancel: expires
+  early.step({ evade: true }); // ~0.5 s before the roll can cancel: expires
   early.run(40);
-  assert.deepEqual(early.attacks, []);
+  assert.equal(earlyRolls(), 1);
 
   const late = new HeadlessSandbox();
+  const lateRolls = rolls(late);
   late.step({ evade: true });
   late.run(29);
-  late.step({ attack: true }); // ~0.06 s before the cancel window: buffered
+  late.step({ evade: true }); // ~0.06 s before the cancel window: buffered
   late.run(10);
-  assert.deepEqual(late.attacks, [AttackId.Horizontal]);
+  assert.equal(lateRolls(), 2);
 });
 
 // ------------------------------------------------------------ spin attack

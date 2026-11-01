@@ -372,6 +372,48 @@ const THRUST_L_STRIKE: Pose = onGround({
   },
 });
 
+/**
+ * Roll thrust, coming up out of the roll: still low like the roll's last crouch
+ * (ROLL_RISE), right foot ahead, the blade chambered level at her right hip and her chest
+ * turned away to load the stab. Blade pitch: arm chain 35 + spine -30 + chest -5 = level.
+ */
+const ROLL_THRUST_WINDUP: Pose = onGround({
+  bones: {
+    spine: [-30, 0, 0],
+    chest: [-5, -25, 0],
+    neck: [15, 0, 0], // eyes up on where the stab goes
+    upperArmR: [15, 0, 15],
+    forearmR: [100, 0, 0],
+    handR: [-80, 0, 0],
+    upperArmL: [45, 0, -15],
+    forearmL: [30, 0, 0],
+    thighR: [85, 0, 0],
+    shinR: [-110, 0, 0],
+    thighL: [45, 0, 0],
+    shinL: [-120, 0, 0],
+  },
+});
+
+/** ...driving up and forward into a full-length stab: arm and blade level, back leg long. */
+const ROLL_THRUST_STRIKE: Pose = onGround({
+  bones: {
+    spine: [-20, 0, 0],
+    chest: [0, 15, 0],
+    neck: [10, 0, 0],
+    shoulderR: [0, 5, 0],
+    upperArmR: [90, 0, 0],
+    forearmR: [0, 0, 0],
+    handR: [-70, 0, 0],
+    upperArmL: [-35, 0, -30],
+    forearmL: [15, 0, 0],
+    thighR: [60, 0, 0],
+    shinR: [-60, 0, 0],
+    thighL: [-35, 0, 0],
+    shinL: [-10, 0, 0],
+    footL: [25, 0, 0], // back heel up
+  },
+});
+
 /** Rising ender wound up: crouched, blade low behind her on the left. */
 const RISING_WINDUP: Pose = onGround({
   bones: {
@@ -626,6 +668,8 @@ const attackClips: ClipDef[] = [
   attackClip(A[AttackId.VerticalLeft], DIAG_L_WINDUP, DIAG_L_STRIKE),
   attackClip(A[AttackId.Thrust], THRUST_WINDUP, THRUST_STRIKE),
   attackClip(A[AttackId.ThrustLeft], THRUST_L_WINDUP, THRUST_L_STRIKE),
+  // Out of a roll: the stab rises from the roll's crouch.
+  attackClip(A[AttackId.RollThrust], ROLL_THRUST_WINDUP, ROLL_THRUST_STRIKE),
   // Combo enders.
   finisherSpinClip(),
   attackClip(A[AttackId.FinisherRising], RISING_WINDUP, RISING_STRIKE),

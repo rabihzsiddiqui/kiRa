@@ -20,6 +20,8 @@ export enum AttackId {
   /** Turns to her right: a clockwise 360 on the stick. */
   SpinClockwise = 'spin_clockwise',
   JumpAttack = 'jump_attack',
+  /** Attack during a roll: a stab driven up out of the roll as she comes onto her feet. */
+  RollThrust = 'roll_thrust',
   /** Perfect dodge counter: a blur-fast dash slash into the attacker. */
   PhantomDash = 'phantom_dash',
   /** Perfect block counter: heavy two-handed strike that breaks posture. */
@@ -163,6 +165,16 @@ export const ATTACKS: Readonly<Record<AttackId, AttackDef>> = {
     poiseDamage: 20,
     hit: { kind: 'arc', range: 2.2, arcDeg: 60 },
   },
+  // Comes out of the roll (see EvadeDef.attackFrom), already low and chambered, so the
+  // wind-up is short; the lunge carries the roll's speed into the stab.
+  [AttackId.RollThrust]: {
+    id: AttackId.RollThrust, anim: 'atk_roll_thrust', damage: 2,
+    startup: 0.1, active: 0.1, recovery: 0.32,
+    comboOpen: 0.26, evadeCancel: 0.32, blockCancel: 0.34,
+    lunge: 7, tracking: 14, endSide: 'left', chargeable: false,
+    poiseDamage: 20,
+    hit: { kind: 'line', range: 2.8, width: 0.45 },
+  },
   [AttackId.PhantomDash]: {
     id: AttackId.PhantomDash, anim: 'atk_phantom_dash', damage: 4,
     startup: 0.1, active: 0.14, recovery: 0.3,
@@ -290,12 +302,18 @@ export interface EvadeDef {
    * in at the start. The roll steers, hops and flips commit.
    */
   steerRate: number;
+  /**
+   * Attack pressed at any point in the evade is held and comes out at this time (the roll:
+   * once she's up out of the tumble). Unset: attacks wait for the cancel window as usual.
+   */
+  attackFrom?: number;
 }
 
 export const EVADES: Readonly<Record<EvadeId, EvadeDef>> = {
   [EvadeId.Roll]: {
     id: EvadeId.Roll, anim: 'evade_roll', duration: 0.7, speed: 8.5, upSpeed: 0,
     invulnFrom: 0.04, invulnTo: 0.3, cancelFrom: 0.58, faceTravel: true, steerRate: 3,
+    attackFrom: 0.48, // ROLL_UP in clips.ts is 0.5: back on her feet
   },
   [EvadeId.SideHopLeft]: {
     id: EvadeId.SideHopLeft, anim: 'evade_hop_left', duration: 0.4, speed: 6, upSpeed: 4,

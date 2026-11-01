@@ -1,11 +1,16 @@
 import { length, normalize, rotateToward, scale, type Vec2 } from '../../core/math';
 import { EVADES, EvadeId, type EvadeDef } from '../../combat/moves';
+import type { Transition } from '../../fsm/StateMachine';
 import { PlayerStateId, type Defense, type PlayerContext, type PlayerState } from '../contracts';
 import { commitIntent, freeRunSpeed, moveVector, readIntent, type EvadeParams } from './shared';
 
 /**
  * Roll, side hops and backflip. Direction was decided by the IntentResolver;
  * this state only executes the motion, the i-frames and the cancel window.
+ *
+ * Evades with an `attackFrom` (the roll) take an Attack press whenever it comes, and hold
+ * the attack it resolves to (the roll thrust) until then. A press early in the roll would
+ * otherwise run out of the input buffer long before she's back on her feet.
  */
 export class EvadeState implements PlayerState {
   readonly id = PlayerStateId.Evade;
@@ -15,6 +20,8 @@ export class EvadeState implements PlayerState {
   private dir: Vec2 = { x: 0, y: 1 };
   /** Traversal roll (not locked on): ends at run speed instead of a stop. */
   private carry = false;
+  /** The attack pressed during this evade, waiting for attackFrom. */
+  private followUp: Transition<PlayerStateId> | undefined;
 
   get evade(): EvadeId {
     return this.def.id;
@@ -30,6 +37,7 @@ export class EvadeState implements PlayerState {
     this.def = EVADES[p.evade];
     this.dir = normalize(p.dir);
     this.t = 0;
+    this.followUp = undefined;
     this.carry = this.def.faceTravel && !ctx.targeting.isLocked;
 
     if (this.def.faceTravel) ctx.motor.turnToward(this.dir, Infinity, 0);
@@ -67,8 +75,13 @@ export class EvadeState implements PlayerState {
     const exitSpeed = this.carry ? Math.min(def.speed, freeRunSpeed(ctx, length(moveVector(ctx)))) : 0;
     ctx.motor.setPlanarVelocity(scale(this.dir, exitSpeed + (def.speed - exitSpeed) * k));
 
+    if (def.attackFrom !== undefined) {
+      if (!this.followUp) this.followUp = commitIntent(ctx, readIntent(ctx, { allowAttack: true, allowEvade: false, evading: def.id }));
+      if (this.followUp && this.t >= def.attackFrom) return this.followUp;
+    }
+
     if (this.t >= def.cancelFrom) {
-      const next = commitIntent(ctx, readIntent(ctx, { allowAttack: true, allowEvade: true }));
+      const next = commitIntent(ctx, readIntent(ctx, { allowAttack: true, allowEvade: true, evading: def.id }));
       if (next) return next;
     }
 

@@ -6,7 +6,7 @@ import { AttackPhase } from '../player/states/AttackState';
  * How each swing's sword trail looks, as data. Engine-free: the render layer (SwordTrail)
  * reads the style and draws it. Four tiers:
  *   standard  the basic combo swings: a thin, quick, cool indigo arc
- *   special   enders and the jump attack: a wider gold arc that lingers and shimmers
+ *   special   enders, the jump attack and the roll thrust: a wider gold arc that lingers and shimmers
  *   spin      the spin attack: the special arc, but faint, so the eye goes to its wave
  *   counter   perfect dodge and perfect block counters: cyan, matching the perfect cues
  *
@@ -57,6 +57,7 @@ const TIERS: Readonly<Record<AttackId, BladeTier>> = {
   [AttackId.Spin]: 'spin',
   [AttackId.SpinClockwise]: 'spin',
   [AttackId.JumpAttack]: 'special',
+  [AttackId.RollThrust]: 'special',
   [AttackId.FinisherSpin]: 'special',
   [AttackId.FinisherRising]: 'special',
   [AttackId.FinisherCleave]: 'special',

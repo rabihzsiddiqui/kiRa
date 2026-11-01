@@ -142,6 +142,7 @@ All of this lives in `resolveIntent()` (`src/combat/IntentResolver.ts`). Directi
 | Right + Attack | Reverse family (opens sweeping left to right) | Reverse family |
 | Left / Back + Attack | Horizontal family (opens sweeping right to left) | Horizontal family |
 | Attack in combo window | the family's next swing (below) | same |
+| Attack during a roll (any time in it) | Roll thrust: a stab out of the roll, once she's up (0.48 s) | (no rolling while locked on) |
 | Hold Attack, release when charged | Spin | Spin |
 | 360 stick + Attack | Spin | Spin |
 | Evade | Forward roll (stick dir) | Jump attack (no rolling while locked on) |

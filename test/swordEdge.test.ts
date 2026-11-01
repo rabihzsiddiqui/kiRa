@@ -41,7 +41,7 @@ function edgeLead(id: AttackId): number {
   return sum / N;
 }
 
-const THRUSTS = new Set([AttackId.Thrust, AttackId.ThrustLeft, AttackId.FinisherLunge]);
+const THRUSTS = new Set([AttackId.Thrust, AttackId.ThrustLeft, AttackId.FinisherLunge, AttackId.RollThrust]);
 
 test('every cut leads with the edge, spins and flat cuts included', () => {
   for (const id of Object.values(AttackId)) {
