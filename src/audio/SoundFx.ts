@@ -16,7 +16,7 @@ const SAMPLES = {
 type Sample = keyof typeof SAMPLES;
 
 /** The roll reuses the slash: this much of its level, this many seconds after the roll starts. */
-const ROLL = { level: 0.45, delay: 0.05 };
+const ROLL = { level: 0.3, delay: 0.1 };
 
 /**
  * Sound, mostly procedural: hits, blocks and counters are built from oscillators and
@@ -118,7 +118,7 @@ export class SoundFx implements FxSink {
    * her body moving rather than the blade. Lands just after the roll starts.
    */
   roll(): void {
-    this.slash(0.93 + Math.random() * 0.03, ROLL.level, ROLL.delay);
+    this.slash(0.88 + Math.random() * 0.03, ROLL.level, ROLL.delay);
   }
 
   /** One of the two slash recordings, alternating. */
