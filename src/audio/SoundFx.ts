@@ -15,6 +15,9 @@ const SAMPLES = {
 } as const;
 type Sample = keyof typeof SAMPLES;
 
+/** The roll reuses the slash: this much of its level, this many seconds after the roll starts. */
+const ROLL = { level: 0.45, delay: 0.05 };
+
 /**
  * Sound, mostly procedural: hits, blocks and counters are built from oscillators and
  * filtered noise. Swings and the lock-on and view-lock sounds are short recordings in
@@ -107,7 +110,20 @@ export class SoundFx implements FxSink {
       return;
     }
     // A little pitch drift so a long combo doesn't sound like a loop.
-    this.sample(this.nextSlash, 0.97 + Math.random() * 0.06);
+    this.slash(0.97 + Math.random() * 0.06);
+  }
+
+  /**
+   * Her roll (evadeStarted): the swing whoosh, quieter and a touch lower, so it reads as
+   * her body moving rather than the blade. Lands just after the roll starts.
+   */
+  roll(): void {
+    this.slash(0.93 + Math.random() * 0.03, ROLL.level, ROLL.delay);
+  }
+
+  /** One of the two slash recordings, alternating. */
+  private slash(rate: number, level = 1, delay = 0): void {
+    this.sample(this.nextSlash, rate, level, delay);
     this.nextSlash = this.nextSlash === 'slash1' ? 'slash2' : 'slash1';
   }
 
@@ -195,15 +211,18 @@ export class SoundFx implements FxSink {
 
   // ----------------------------------------------------------- building blocks
 
-  /** Plays a recording on her bus. Skipped if it hasn't finished loading. */
-  private sample(name: Sample, rate = 1): void {
+  /**
+   * Plays a recording on her bus, `level` times its usual level, `delay` seconds from now.
+   * Skipped if it hasn't finished loading.
+   */
+  private sample(name: Sample, rate = 1, level = 1, delay = 0): void {
     const buffer = this.samples.get(name);
     if (!this.ctx || !buffer) return;
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
     src.playbackRate.value = rate;
-    src.connect(this.gain(SAMPLES[name].level, 'player'));
-    src.start();
+    src.connect(this.gain(SAMPLES[name].level * level, 'player'));
+    src.start(this.ctx.currentTime + delay);
   }
 
   private loadSamples(ctx: AudioContext): void {

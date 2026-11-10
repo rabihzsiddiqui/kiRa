@@ -8,7 +8,7 @@ import { RapierCameraProbe } from '../physics/RapierCameraProbe';
 import { planarFrom3, planarTo3 } from '../physics/space';
 import { lookAllowed } from '../character/headLook';
 import { PlayerStateId } from '../player/contracts';
-import { AttackId } from '../combat/moves';
+import { AttackId, EvadeId } from '../combat/moves';
 import { ArenaView } from '../render/ArenaView';
 import { BladeCharge } from '../render/BladeCharge';
 import { spinWaveTrails, SwordTrail } from '../render/SwordTrail';
@@ -79,6 +79,9 @@ async function boot(): Promise<void> {
   const sound = new SoundFx();
   for (const sink of [grade, fx, sound, new PadRumble(devices)]) game.addFxSink(sink);
   game.events.on('attackStarted', ({ attack }) => sound.swing(attack));
+  game.events.on('evadeStarted', ({ evade }) => {
+    if (evade === EvadeId.Roll) sound.roll();
+  });
   game.dummyAI.events.on('telegraph', ({ step }) => sound.telegraph(!!step.attack.unblockable));
   game.targeting.events.on('targetLocked', () => sound.lockOn());
   game.targeting.events.on('targetReleased', ({ reason }) => sound.lockOff(reason === 'lost'));
