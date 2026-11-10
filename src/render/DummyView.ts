@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import type { EnemyStatus } from '../combat/Enemy';
 import type { Vec2 } from '../core/math';
+import type { StringStep } from '../enemies/strings';
 import type { DummyPhase } from '../enemies/TrainingDummyAI';
+import { DUMMY_WEAPON, WEAPON_REST, mixPose, weaponPose, type WeaponPose } from '../enemies/weaponPose';
 import { planarTo3, yawFromFacing } from '../physics/space';
 import { COLORS } from './palette';
 import { burlapTexture, canvasTexture, woodTexture } from './stages/textures';
@@ -15,9 +17,11 @@ export interface DummyState {
   /** Real seconds since her sword last connected. */
   sinceHit: number;
   locked: boolean;
-  /** AI phase and 0..1 progress through it. Drives the arm. */
+  /** AI phase and 0..1 progress through it, in the current string. Drives the glaive. */
   phase: DummyPhase;
   progress: number;
+  steps: readonly StringStep[];
+  stepIndex: number;
   /** World seconds since the last telegraph event (glint). */
   sinceTelegraph: number;
   /** An unblockable step is winding up or live: red glow. */
@@ -37,10 +41,8 @@ const BAR_WIDTH = 0.9;
 const FLASH_TIME = 0.12;
 const GLINT_TIME = 0.35; // world seconds
 const RED = 0xef4444; // red-500, same meaning as enemy hit areas in the debug view
-const WIND_BACK = -0.9; // arm yaw, radians. Positive swings the right-hand tip forward.
-const FOLLOW_THROUGH = 1.1;
-
-const ease = (k: number) => 1 - (1 - Math.max(0, Math.min(1, k))) ** 3;
+/** How fast the glaive settles back to guard when a string is cut short, per world second. */
+const SETTLE_RATE = 8;
 
 /** Where her eyes go on the dummy, as a fraction of its height: the middle of its sack head. */
 export const DUMMY_HEAD_AT = 0.92;
@@ -50,7 +52,8 @@ export const DUMMY_HEAD_AT = 0.92;
  * body tied with rope, a crossbar for arms with straw poking out of the sleeves, a sack head
  * with a stitched face, and a straw hat. Sways on the WORLD clock, so slow-mo is visible on
  * it. A cyan marker floats above it while it is the locked target. Reacts to combat:
- * flashes when hit, rocks back on recoil, parry and stagger. The crossbar is its weapon.
+ * flashes when hit, rocks back on recoil, parry and stagger. It swings a long wooden
+ * glaive in its right hand, posed by weaponPose() so the blade sweeps the real hit shape.
  */
 export class DummyView {
   readonly root = new THREE.Group();
@@ -62,6 +65,11 @@ export class DummyView {
   /** Materials that light up on a hit (white) or for an unblockable (red). */
   private readonly flashing: THREE.MeshStandardMaterial[];
   private readonly armPivot = new THREE.Group();
+  /** At the right hand: lift and roll. */
+  private readonly weaponHand = new THREE.Group();
+  /** Inside the hand: slides along the shaft for the thrust. */
+  private readonly weaponSlide = new THREE.Group();
+  private pose: WeaponPose = { ...WEAPON_REST };
   private readonly glint: THREE.Sprite;
   private readonly barTrack: THREE.Sprite;
   private readonly barFill: THREE.Sprite;
@@ -83,7 +91,9 @@ export class DummyView {
     const straw = std(0xdcbc68, null, 1);
     const rope = new THREE.MeshStandardMaterial({ color: 0x8f7650, roughness: 1 });
     const band = new THREE.MeshStandardMaterial({ color: 0x3f3a9e, roughness: 0.9 });
-    this.flashing = [wood, burlap, headMat, straw];
+    const pole = std(woodTex ? 0x6b4428 : 0x5a3a22, woodTex, 0.8);
+    const oak = std(0xd9c39a, null, 0.6); // pale wood, like a bokken
+    this.flashing = [wood, burlap, headMat, straw, pole, oak];
 
     const s = height / 1.8; // proportions below are for a 1.8 m dummy
     const add = (parent: THREE.Object3D, geo: THREE.BufferGeometry, mat: THREE.Material, x = 0, y = 0, z = 0) => {
@@ -131,7 +141,7 @@ export class DummyView {
     this.swayer.add(strawTuft(straw, 12, 0.09 * s, 0.14, 1, 1.44 * s));
 
     // Arms: one crossbar through the shoulders, burlap sleeves, straw hands.
-    this.armPivot.position.y = height * 0.74;
+    this.armPivot.position.y = height * DUMMY_WEAPON.shoulderAt;
     const bar = new THREE.CylinderGeometry(0.032, 0.032, 1.42, 8);
     bar.rotateZ(Math.PI / 2);
     add(this.armPivot, bar, wood);
@@ -148,6 +158,21 @@ export class DummyView {
       this.armPivot.add(hand);
     }
 
+    // The glaive: a long shaft gripped in the right hand, a wrapped grip and collar, and a
+    // curved wooden blade. Built along +X from the hand, edge toward -Z (see weaponPose.ts).
+    const W = DUMMY_WEAPON;
+    this.weaponHand.position.x = W.handX;
+    this.weaponHand.rotation.order = 'ZXY'; // lift in the bar's plane, then roll about the shaft
+    this.armPivot.add(this.weaponHand);
+    this.weaponHand.add(this.weaponSlide);
+    const alongX = (geo: THREE.BufferGeometry, from: number, to: number) => geo.rotateZ(-Math.PI / 2).translate((from + to) / 2, 0, 0);
+    const shaftEnd = W.length - W.blade;
+    add(this.weaponSlide, alongX(new THREE.CylinderGeometry(0.028, 0.032, shaftEnd + W.butt, 10), -W.butt, shaftEnd), pole);
+    add(this.weaponSlide, alongX(new THREE.CylinderGeometry(0.037, 0.037, 0.06, 10), -W.butt - 0.03, -W.butt + 0.03), rope);
+    add(this.weaponSlide, alongX(new THREE.CylinderGeometry(0.035, 0.035, 0.38, 10), -0.12, 0.26), rope);
+    add(this.weaponSlide, alongX(new THREE.CylinderGeometry(0.044, 0.04, 0.07, 12), shaftEnd - 0.05, shaftEnd + 0.02), band);
+    add(this.weaponSlide, bladeGeometry(W.blade, shaftEnd), oak);
+
     // Sack head with a stitched face, tied off at the neck, under a straw hat.
     const headY = height * DUMMY_HEAD_AT;
     const head = add(this.swayer, new THREE.SphereGeometry(0.2 * s, 24, 16), headMat, 0, headY, 0);
@@ -160,8 +185,7 @@ export class DummyView {
     add(hat, new THREE.CylinderGeometry(0.172 * s, 0.174 * s, 0.04 * s, 20), band, 0, 0.03 * s, 0);
     this.swayer.add(hat, this.armPivot);
 
-    // Weapon glint on the arm's right-hand tip (facing -Z, right is +X): a four-point star
-    // that blooms. Drawn over the body (no depth test) so the telegraph reads from any angle.
+    // Weapon glint on the blade tip: a four-point star that blooms. Drawn over the body (no depth test) so the telegraph reads from any angle.
     this.glint = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: starTexture(),
@@ -172,9 +196,9 @@ export class DummyView {
       }),
     );
     this.glint.renderOrder = 20;
-    this.glint.position.x = 0.7;
+    this.glint.position.x = W.length - 0.04;
     this.glint.visible = false;
-    this.armPivot.add(this.glint);
+    this.weaponSlide.add(this.glint);
 
     // Poise bar above the head. Sprites always face the camera; both are anchored so
     // their left edges line up.
@@ -247,7 +271,14 @@ export class DummyView {
       (this.glint.material as THREE.SpriteMaterial).rotation = reducedMotion ? 0 : g * 1.5;
     }
 
-    this.armPivot.rotation.y = armYaw(s.phase, s.progress);
+    // Live swings follow the AI exactly, so the blade is where the hitbox is. A string cut
+    // short (stagger, toggled off) eases back to guard instead of snapping.
+    if (s.phase === 'idle') this.pose = mixPose(this.pose, WEAPON_REST, 1 - Math.exp(-SETTLE_RATE * worldDt));
+    else this.pose = weaponPose(s.steps, s.stepIndex, s.phase, s.progress);
+    this.armPivot.rotation.y = this.pose.yaw;
+    this.weaponHand.rotation.z = this.pose.lift;
+    this.weaponHand.rotation.x = this.pose.roll;
+    this.weaponSlide.position.x = this.pose.slide;
 
     // Poise bar: hidden when empty, flashes white when a perfect block lands.
     const showBar = s.poise > 0.005 || s.sinceParry < 0.3;
@@ -268,18 +299,24 @@ export class DummyView {
   }
 }
 
-/** Wind back during windup, swing through while the hitbox is live, settle in recovery. */
-function armYaw(phase: DummyPhase, k: number): number {
-  switch (phase) {
-    case 'windup':
-      return WIND_BACK * ease(k * 1.5);
-    case 'active':
-      return WIND_BACK + (FOLLOW_THROUGH - WIND_BACK) * ease(k);
-    case 'recovery':
-      return FOLLOW_THROUGH * (1 - ease(k));
-    default:
-      return 0;
-  }
+/**
+ * A curved wooden blade, `length` long from `start` along +X: a straight spine that lifts
+ * to the point, edge on the -Z side.
+ */
+function bladeGeometry(length: number, start: number): THREE.BufferGeometry {
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0.03);
+  shape.quadraticCurveTo(length * 0.6, 0.032, length * 0.86, 0.05);
+  shape.lineTo(length, 0.09);
+  shape.quadraticCurveTo(length * 0.8, -0.03, length * 0.3, -0.05);
+  shape.lineTo(0, -0.046);
+  const depth = 0.018;
+  const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 8 });
+  geo.translate(0, 0, -depth / 2);
+  geo.rotateX(Math.PI / 2); // shape y becomes z: edge (-y) faces -Z
+  geo.translate(start, 0, 0);
+  geo.computeVertexNormals();
+  return geo;
 }
 
 /** Four-point star with a soft core, for the weapon glint. */

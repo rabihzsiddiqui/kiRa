@@ -6,8 +6,15 @@ import type { EnemyAttackDef } from '../combat/Enemy';
  *   |---- windup ----|-- active --|-- recovery --|  next step ...
  *   ^ telegraph (glint, or red glow if unblockable)
  */
+/**
+ * How the dummy's glaive moves for a step (see weaponPose.ts). Forehand sweeps from its
+ * right to its left, backhand the other way. Pick one that sweeps the hit shape.
+ */
+export type SwingMotion = 'forehand' | 'backhand' | 'overhead' | 'thrust';
+
 export interface StringStep {
   attack: EnemyAttackDef;
+  motion: SwingMotion;
   /** Telegraph to hitbox open. The window the player reads and reacts to. */
   windup: number;
   /** Hitbox live. */
@@ -33,6 +40,7 @@ export const DUMMY_STRINGS: readonly AttackString[] = [
     steps: [
       {
         attack: { id: 'single_slash', damage: 1, hit: SLASH_ARC },
+        motion: 'forehand',
         windup: 0.6, active: 0.1, recovery: 0.6, telegraph: true,
       },
     ],
@@ -45,14 +53,17 @@ export const DUMMY_STRINGS: readonly AttackString[] = [
     steps: [
       {
         attack: { id: 'combo_1', damage: 1, hit: SLASH_ARC },
+        motion: 'forehand',
         windup: 0.55, active: 0.08, recovery: 0, telegraph: true,
       },
       {
         attack: { id: 'combo_2', damage: 1, hit: SLASH_ARC },
+        motion: 'backhand',
         windup: 0.17, active: 0.08, recovery: 0, telegraph: false,
       },
       {
         attack: { id: 'combo_3', damage: 1.5, hit: SLASH_ARC },
+        motion: 'forehand',
         windup: 0.17, active: 0.1, recovery: 0.7, telegraph: false,
       },
     ],
@@ -64,6 +75,7 @@ export const DUMMY_STRINGS: readonly AttackString[] = [
     steps: [
       {
         attack: { id: 'delayed_overhead', damage: 2, hit: { kind: 'arc', range: 2.6, arcDeg: 50 } },
+        motion: 'overhead',
         windup: 1.25, active: 0.1, recovery: 0.8, telegraph: true,
       },
     ],
@@ -75,6 +87,7 @@ export const DUMMY_STRINGS: readonly AttackString[] = [
     steps: [
       {
         attack: { id: 'unblockable_thrust', damage: 2, hit: { kind: 'line', range: 3.4, width: 0.6 }, unblockable: true },
+        motion: 'thrust',
         windup: 0.8, active: 0.12, recovery: 0.9, telegraph: true,
       },
     ],

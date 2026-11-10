@@ -268,6 +268,8 @@ async function boot(): Promise<void> {
       locked: game.targeting.current === d,
       phase: game.dummyAI.phase,
       progress: game.dummyPhaseProgress,
+      steps: game.dummyAI.string?.steps ?? [],
+      stepIndex: game.dummyAI.stepIndex,
       sinceTelegraph: game.worldTime - game.dummyTelegraphAt,
       glow: game.dummyGlow,
       poise: d.poise.value / d.poise.cfg.max,
