@@ -255,15 +255,17 @@ export function stoneWall(length: number, height: number, thickness: number, mat
   g.add(place(m(new THREE.BoxGeometry(length, height, thickness), mats.stoneBlocks), 0, height / 2, 0));
   // Cap course: a slight lip, small enough that nothing pokes past the collider.
   g.add(place(m(new THREE.BoxGeometry(length + 0.1, 0.12, thickness + 0.08), mats.stoneCap), 0, height + 0.06, 0));
-  // Piers every 4 m, flush with the courtyard side (pushed outward), so she never clips one.
+  // Piers every 4 m, pushed outward so the shaft sits 4 cm behind the courtyard face and the
+  // wider cap ends on the collider plane. Flush faces z-fight and flicker.
   const piers = Math.round(length / 4);
+  const pierOffset = 0.44 - thickness / 2;
   for (let i = 0; i <= piers; i++) {
     const x = -length / 2 + (i / piers) * length;
     const pier = new THREE.Group();
     pier.add(place(m(new THREE.BoxGeometry(0.8, height + 0.3, 0.8), mats.stoneBlocks), 0, (height + 0.3) / 2, 0));
     pier.add(place(m(new THREE.BoxGeometry(0.88, 0.14, 0.88), mats.stoneCap), 0, height + 0.37, 0));
     pier.add(place(m(new THREE.SphereGeometry(0.16, 12, 8), mats.stoneCap), 0, height + 0.56, 0));
-    pier.position.set(x, 0, outward * (0.4 - thickness / 2));
+    pier.position.set(x, 0, outward * pierOffset);
     g.add(pier);
   }
   return g;
