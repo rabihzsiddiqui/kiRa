@@ -33,7 +33,7 @@ src/camera      CameraRig: orbit, lock-on framing, spring arm, cue reactions. En
 src/sandbox     HeadlessSandbox (used by tests, shows the frame order)
 src/render      three.js: ArenaView + stages/ (each stage's look: void, training grounds day and dusk), CharacterFigure + PlayerView, dummy view, ThreeAnimator (mixer), CameraView, PostFx, ThreeFx
 src/audio       SoundFx: procedural Web Audio, an FxSink like ThreeFx
-src/app         browser composition root: main.ts (loop), Game.ts (sim step), arena (layout shared by every stage), stages (the stage list), OptionsMenu, devices (keyboard, gamepad, rumble), overlay, gallery.ts
+src/app         browser composition root: main.ts (loop), Game.ts (sim step), arena (layout shared by every stage), stages (the stage list), OptionsMenu, Hud + hudModel (player hud: prompts, target posture, controls card), DebugOverlay (tab), devices (keyboard, gamepad, rumble), gallery.ts
 test/           scenario tests driven by frame-by-frame input, motor tests, import boundary check
 public/         PWA: manifest, icons, service worker (production builds only); models/ (glTF assets)
 ```

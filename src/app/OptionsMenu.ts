@@ -1,8 +1,16 @@
 import type { PadMenu } from './input/padLayout';
 import { STAGES, type StageId } from './stages';
 
+/** An on / off row under "display". The owner keeps the value; the menu reads and flips it. */
+export interface MenuToggle {
+  label: string;
+  blurb: string;
+  get: () => boolean;
+  set: (on: boolean) => void;
+}
+
 /**
- * Options panel. For now it holds one setting, the stage. Picking a stage applies it at once
+ * Options panel: the stage, and display switches (controls card, debug panels). Picking a stage applies it at once
  * (you see it behind the panel) and the menu stays open, so stages can be compared.
  * The owner pauses the sim while `open` is true and passes in keyboard and pad presses.
  */
@@ -15,11 +23,14 @@ export class OptionsMenu {
 
   private readonly backdrop: HTMLElement;
   private readonly hint: HTMLElement;
+  /** Every focusable row, stages then toggles, in the order the arrows walk them. */
   private readonly options: HTMLButtonElement[] = [];
+  private readonly picks: Array<() => void> = [];
+  private readonly switches: Array<{ button: HTMLButtonElement; state: HTMLElement; toggle: MenuToggle }> = [];
   private focus = 0;
   private current: StageId;
 
-  constructor(parent: HTMLElement, current: StageId) {
+  constructor(parent: HTMLElement, current: StageId, toggles: readonly MenuToggle[] = []) {
     this.current = current;
     this.backdrop = el('div', 'menu-backdrop');
     this.backdrop.hidden = true;
@@ -47,7 +58,7 @@ export class OptionsMenu {
     const group = el('div', 'menu-options');
     group.setAttribute('role', 'radiogroup');
     group.setAttribute('aria-label', 'stage');
-    STAGES.forEach((stage, i) => {
+    for (const stage of STAGES) {
       const b = el('button', 'menu-option');
       b.setAttribute('role', 'radio');
       b.dataset.stage = stage.id;
@@ -60,17 +71,38 @@ export class OptionsMenu {
       blurb.textContent = stage.blurb;
       text.append(name, blurb);
       b.append(swatch, text);
-      b.addEventListener('click', () => {
-        this.setFocus(i);
-        this.pick();
-      });
-      b.addEventListener('pointerenter', () => this.setFocus(i));
-      this.options.push(b);
+      this.addRow(b, () => this.pickStage(stage.id));
       group.append(b);
-    });
+    }
+    panel.append(header, section, group);
+
+    if (toggles.length > 0) {
+      const display = el('p', 'menu-section menu-section-gap');
+      display.textContent = 'display';
+      const list = el('div', 'menu-options');
+      for (const toggle of toggles) {
+        const b = el('button', 'menu-option menu-switch');
+        b.setAttribute('role', 'switch');
+        const text = el('span', 'menu-option-text');
+        const name = el('span', 'menu-option-title');
+        name.textContent = toggle.label;
+        const blurb = el('span', 'menu-option-blurb');
+        blurb.textContent = toggle.blurb;
+        text.append(name, blurb);
+        const state = el('span', 'menu-switch-state');
+        b.append(text, state);
+        this.switches.push({ button: b, state, toggle });
+        this.addRow(b, () => {
+          toggle.set(!toggle.get());
+          this.refresh();
+        });
+        list.append(b);
+      }
+      panel.append(display, list);
+    }
 
     this.hint = el('p', 'menu-hint');
-    panel.append(header, section, group, this.hint);
+    panel.append(this.hint);
     this.backdrop.append(panel);
     parent.append(this.backdrop);
     this.refresh();
@@ -82,6 +114,7 @@ export class OptionsMenu {
     this.open = true;
     this.hint.textContent = hint;
     this.backdrop.hidden = false;
+    this.refresh(); // a switch may have been flipped from the keyboard since
     this.setFocus(Math.max(0, STAGES.findIndex((s) => s.id === this.current)));
     this.options[this.focus].focus({ preventScroll: true });
     this.onToggle?.(true);
@@ -143,8 +176,22 @@ export class OptionsMenu {
     this.options[this.focus].focus({ preventScroll: true });
   }
 
+  private addRow(b: HTMLButtonElement, pick: () => void): void {
+    const i = this.options.length;
+    b.addEventListener('click', () => {
+      this.setFocus(i);
+      this.pick();
+    });
+    b.addEventListener('pointerenter', () => this.setFocus(i));
+    this.options.push(b);
+    this.picks.push(pick);
+  }
+
   private pick(): void {
-    const id = STAGES[this.focus].id;
+    this.picks[this.focus]?.();
+  }
+
+  private pickStage(id: StageId): void {
     if (id === this.current) return;
     this.current = id;
     this.refresh();
@@ -158,9 +205,16 @@ export class OptionsMenu {
 
   private refresh(): void {
     for (const b of this.options) {
+      if (!b.dataset.stage) continue;
       const on = b.dataset.stage === this.current;
       b.setAttribute('aria-checked', String(on));
       b.classList.toggle('menu-option-on', on);
+    }
+    for (const { button, state, toggle } of this.switches) {
+      const on = toggle.get();
+      button.setAttribute('aria-checked', String(on));
+      state.textContent = on ? 'on' : 'off';
+      state.classList.toggle('menu-switch-on', on);
     }
   }
 }

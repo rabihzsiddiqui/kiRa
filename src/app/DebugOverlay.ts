@@ -4,6 +4,7 @@ import type { EvadeState } from '../player/states/EvadeState';
 import type { Devices } from './input/Devices';
 import type { PadLabels } from './input/padLayout';
 import type { Game } from './Game';
+import { controlsFor } from './hudModel';
 
 /** Debug switches the HUD shows. main.ts owns them; the HUD only reads. */
 export interface DebugFlags {
@@ -28,55 +29,6 @@ const padToggles = (l: PadLabels): ToggleKeys => ({
 // Phones only get the gameplay buttons and a few pills; the deeper switches are keyboard only.
 const TOUCH_TOGGLES: ToggleKeys = { hitAreas: 'keys only', slowmo: 'keys only', infinitePerfect: 'keys only' };
 
-const TOUCH_CONTROLS: ReadonlyArray<[string, string]> = [
-  ['move', 'left thumb'],
-  ['look', 'drag on the right'],
-  ['attack', 'atk'],
-  ['evade', 'roll'],
-  ['block', 'block, hold'],
-  ['target', 'lock, tap'],
-  ['jump atk', 'jump (roll, while locked on)'],
-  ['roll atk', 'atk during a roll'],
-  ['dummy ai', 'ai pill'],
-  ['pause sim', 'pause pill'],
-  ['options', 'options pill'],
-  ['hud', 'hud pill'],
-];
-
-const KEYBOARD_CONTROLS: ReadonlyArray<[string, string]> = [
-  ['move', 'wasd'],
-  ['look', 'mouse'],
-  ['attack', 'j'],
-  ['evade', 'space'],
-  ['block', 'k'],
-  ['target', 'shift, right mouse'],
-  ['jump atk', 'evade while locked on'],
-  ['roll atk', 'j during a roll'],
-  ['dummy ai', 'h on / off'],
-  ['strings', '1 to 4, 0 cycles'],
-  ['pause sim', 'p'],
-  ['options', 'o or esc'],
-  ['mute', 'm'],
-  ['hud', 'tab'],
-];
-
-/** Controls list for the active pad, in its own button names. */
-const padControls = (l: PadLabels): ReadonlyArray<[string, string]> => [
-  ['move', 'left stick'],
-  ['look', 'right stick'],
-  ['attack', l.attack],
-  ['evade', l.evade],
-  ['block', l.block],
-  ['target', l.target],
-  ['jump atk', 'evade while locked on'],
-  ['roll atk', 'attack during a roll'],
-  ['dummy ai', 'd-pad up'],
-  ['strings', 'd-pad left / right'],
-  ['options', 'start (pauses)'],
-  ['mute', 'm'],
-  ['hud', 'back'],
-];
-
 /** Buffered presses shown at once. The buffer rarely holds more than two. */
 const BUFFER_SLOTS = 4;
 
@@ -88,7 +40,7 @@ interface BarRow {
 }
 
 /**
- * Debug HUD, two panels. Left: live state (FSM, move phase, input buffer, perfect
+ * Debug panels, off by default (tab, pad back, the debug pill, or options). Two panels. Left: live state (FSM, move phase, input buffer, perfect
  * windows, clocks, debug switches). Right: recent transitions, combat, cues, controls.
  * Read only: it looks at the game, never changes it. Plain DOM with textContent, so
  * there is nothing to escape and no framework.
@@ -107,7 +59,6 @@ export class DebugOverlay {
   private readonly transitions: HTMLElement;
   private readonly combat: HTMLElement;
   private readonly cues: HTMLElement;
-  private readonly hint: HTMLElement;
   private readonly controls: HTMLElement;
   private controlsFor = '';
 
@@ -187,21 +138,21 @@ export class DebugOverlay {
     // The first section of a panel sits flush with the top padding.
     this.log.firstElementChild?.classList.add('hud-section-first');
 
-    this.hint = text('p', 'hud-hint', 'click the arena to capture the mouse');
-    parent.append(this.live, this.log, this.hint);
+    parent.append(this.live, this.log);
   }
 
-  toggle(): void {
-    const hide = !this.live.hidden;
-    this.live.hidden = hide;
-    this.log.hidden = hide;
+  get visible(): boolean {
+    return !this.live.hidden;
+  }
+
+  set visible(on: boolean) {
+    this.live.hidden = !on;
+    this.log.hidden = !on;
   }
 
   update(fps: number): void {
-    const onPad = this.devices.active === 'gamepad';
-    // The mouse hint only matters on keyboard and mouse.
-    this.hint.hidden = this.devices.active !== 'keyboard' || this.devices.keyboard.pointerLocked;
     if (this.live.hidden) return;
+    const onPad = this.devices.active === 'gamepad';
     this.renderControls();
     const g = this.game;
     const m = g.motor;
@@ -289,7 +240,7 @@ export class DebugOverlay {
     if (key === this.controlsFor) return;
     this.controlsFor = key;
     const labels = this.devices.gamepad.labels;
-    const rows = kind === 'gamepad' ? padControls(labels) : kind === 'touch' ? TOUCH_CONTROLS : KEYBOARD_CONTROLS;
+    const rows = controlsFor(kind, labels);
     this.controls.replaceChildren(...rows.flatMap(([k, v]) => [text('dt', 'hud-key', k), text('dd', 'hud-value', v)]));
     const keys = kind === 'gamepad' ? padToggles(labels) : kind === 'touch' ? TOUCH_TOGGLES : KEYBOARD_TOGGLES;
     for (const [flag, t] of this.toggles) setText(t.key, keys[flag]);

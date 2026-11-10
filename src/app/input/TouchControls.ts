@@ -4,7 +4,7 @@ import { evadeLabel, knobOffset, LOOK_SENSITIVITY, stickFromDrag, zoneAt } from 
 import type { DeviceFrame, LookDelta } from './types';
 
 /** Sandbox controls with no gameplay action behind them. */
-export type TouchDebug = 'hud' | 'ai' | 'pause' | 'options' | 'fullscreen';
+export type TouchDebug = 'debug' | 'ai' | 'pause' | 'options' | 'fullscreen';
 
 interface ButtonDef {
   action: Action;
@@ -22,7 +22,7 @@ const BUTTONS: readonly ButtonDef[] = [
 ];
 
 const PILLS: ReadonlyArray<[TouchDebug, string]> = [
-  ['hud', 'hud'],
+  ['debug', 'debug'],
   ['ai', 'ai'],
   ['pause', 'pause'],
   ['options', 'options'],

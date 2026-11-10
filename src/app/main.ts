@@ -23,12 +23,17 @@ import { ThreeFx } from '../render/ThreeFx';
 import { ARENA } from './arena';
 import { CounterGlyph } from './CounterGlyph';
 import { DebugOverlay } from './DebugOverlay';
+import { Hud } from './Hud';
 import { OptionsMenu } from './OptionsMenu';
 import { initialStage, STAGE_STORAGE_KEY, type StageId } from './stages';
 import type { DeviceKind } from './input/Devices';
 import { Game, SIM_DT } from './Game';
 import { Devices } from './input/Devices';
 import { PadRumble } from './input/PadRumble';
+
+/** Remembered between visits: the controls card and the debug panels. */
+const CONTROLS_STORAGE_KEY = 'kira.hud.controls';
+const DEBUG_STORAGE_KEY = 'kira.hud.debug';
 
 /** A long hitch (tab switch, breakpoint) is clamped so the sim doesn't fast-forward. */
 const MAX_FRAME_TIME = 0.25;
@@ -95,18 +100,42 @@ async function boot(): Promise<void> {
     slowmo: game.feel.slowmo,
     infinitePerfect: game.player.infinitePerfectWindows,
   }));
-  // Phones: the hud would cover most of the screen; it is one tap away on the hud pill.
-  if (devices.touch) {
-    overlay.toggle();
-    devices.touch.setLockQuery(() => game.targeting.isLocked || game.targeting.isViewLocked);
-  }
+  // Off unless asked for: the panels are for tuning, not playing.
+  overlay.visible = readStored(DEBUG_STORAGE_KEY) === 'on';
+  const setDebug = (on: boolean) => {
+    overlay.visible = on;
+    writeStored(DEBUG_STORAGE_KEY, on ? 'on' : 'off');
+  };
+  // The controls card starts open, except on phones where it would sit under the left thumb.
+  const storedControls = readStored(CONTROLS_STORAGE_KEY);
+  const hud = new Hud(
+    document.body,
+    game,
+    devices,
+    () => ({
+      paused,
+      muted: sound.isMuted,
+      slowmo: game.feel.slowmo,
+      infinitePerfect: game.player.infinitePerfectWindows,
+      hitAreas: hitboxes.visible,
+    }),
+    storedControls === null ? !devices.touch : storedControls === 'on',
+  );
+  const setControls = (on: boolean) => {
+    hud.controlsShown = on;
+    writeStored(CONTROLS_STORAGE_KEY, on ? 'on' : 'off');
+  };
+  if (devices.touch) devices.touch.setLockQuery(() => game.targeting.isLocked || game.targeting.isViewLocked);
   if (import.meta.env.DEV) {
     window.__kira = game;
     window.__kiraFx = fx;
   }
 
   // Options: the sim pauses while it is open. Picking a stage applies it behind the panel.
-  const menu = new OptionsMenu(document.body, arena.current ?? 'grounds');
+  const menu = new OptionsMenu(document.body, arena.current ?? 'grounds', [
+    { label: 'controls', blurb: 'the button list, bottom left.', get: () => hud.controlsShown, set: setControls },
+    { label: 'debug panels', blurb: 'fsm, buffer, windows, clocks. for tuning.', get: () => overlay.visible, set: setDebug },
+  ]);
   menu.onStage = (id: StageId) => {
     post.setBloom(arena.setStage(id).bloom);
     writeStored(STAGE_STORAGE_KEY, id);
@@ -159,9 +188,10 @@ async function boot(): Promise<void> {
     if (e.code === 'KeyN') debug.toggleSlowmo();
     if (e.code === 'KeyI') debug.toggleInfinitePerfect();
     if (e.code === 'KeyM') sound.toggleMute();
+    if (e.code === 'KeyC') setControls(!hud.controlsShown);
     if (e.code === 'Tab') {
       e.preventDefault();
-      overlay.toggle();
+      setDebug(!overlay.visible);
     }
   });
   devices.gamepad.onMenu = (m) => {
@@ -176,11 +206,11 @@ async function boot(): Promise<void> {
     else if (d === 'hitAreas') debug.toggleHitAreas();
     else if (d === 'slowmo') debug.toggleSlowmo();
     else if (d === 'infinitePerfect') debug.toggleInfinitePerfect();
-    else if (d === 'overlay') overlay.toggle();
+    else if (d === 'overlay') setDebug(!overlay.visible);
   };
   if (devices.touch) {
     devices.touch.onDebug = (d) => {
-      if (d === 'hud') overlay.toggle();
+      if (d === 'debug') setDebug(!overlay.visible);
       else if (d === 'ai') {
         debug.toggleAI();
         toast(game.dummyAI.enabled ? 'dummy ai on' : 'dummy ai off');
@@ -293,6 +323,7 @@ async function boot(): Promise<void> {
 
     if (realDt > 0) fps += (1 / realDt - fps) * 0.05;
     overlay.update(fps);
+    hud.update(overlay.visible);
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
